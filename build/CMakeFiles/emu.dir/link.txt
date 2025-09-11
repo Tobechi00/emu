@@ -1,0 +1,1 @@
+/usr/bin/c++ CMakeFiles/emu.dir/src/main.cpp.o CMakeFiles/emu.dir/src/cpu/cpu.cpp.o CMakeFiles/emu.dir/src/memory/memory.cpp.o -o emu 

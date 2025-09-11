@@ -1,0 +1,3 @@
+/home/tobechi/cpp_projects/emu/build/CMakeFiles/emu.dir
+/home/tobechi/cpp_projects/emu/build/CMakeFiles/edit_cache.dir
+/home/tobechi/cpp_projects/emu/build/CMakeFiles/rebuild_cache.dir

@@ -3,6 +3,12 @@
 #include "cpu.h"
 #include <sys/types.h>
 
+#define Z_FLAG   0x0080;
+#define HC_FLAG  0x0020;
+#define N_FLAG   0x0040;
+    
+    
+
 cpu::cpu(){
     reset();//set all registers to default;
 }
@@ -19,21 +25,38 @@ void cpu::run(memory &memory){//start instruction execution
 
 uint8_t cpu::inc_8bit_rgstr(uint8_t rgstr){
 
-    this -> af_register = this -> af_register & 0xF0;//unset all flags including N flag - always uset on incr operation
+    this -> af_register = this -> af_register & 0xFF10;//unset Z N HC
+
 
     if(rgstr == 0xFF){//inc will cause it to become zero, wrap around
-        this -> af_register = this->af_register | 0x80;//Z: 0x80
+        this -> af_register = this->af_register | Z_FLAG;
     }
 
     uint8_t lower_byte = rgstr & 0x0F;
 
     if(lower_byte == 0x0F){//if all lower bits are set or the three last lower bits a half carry will always be made on inc
-        this -> af_register = this->af_register | 0x20;//HC: 0x20
+        this -> af_register = this->af_register | HC_FLAG;
     }
 
     return ++rgstr;
 }
 
+// uint8_t cpu::dec_8bit_rgstr(uint8_t rgstr){
+//     this -> af_register = this -> af_register & 0xFF10;//unset Z N HC
+
+//     this -> af_register = this -> af_register | N_FLAG;
+
+//     if(rgstr == 0x00){//dec will cause it to become 0xFF, wrap around
+//         this -> af_register = this->af_register | Z_FLAG;//Z: 0x80
+//     }
+
+//     if(rgstr == 0x10){ rework 
+//         this -> af_register = this->af_register | HC_FLAG;//HC: 0x20
+//     }
+    
+
+//     return --rgstr;
+// }
 
 void cpu::execute(uint8_t instruction, memory &memory){
 
@@ -61,44 +84,84 @@ void cpu::execute(uint8_t instruction, memory &memory){
                         break;
                     }
 
-                    case 0x01:{//incr de
+                    case 0x10:{//incr de
                         rgstr = &this->de_register;
                         break;
                     }
 
-                    case 0x02:{//incr hl
+                    case 0x20:{//incr hl
                         rgstr = &this->hl_register;
                         break;
                     }
 
-                    case 0x03:{//incr sp
+                    case 0x30:{//incr sp
                         rgstr = &this->stack_pointer;
                         break;
                     }
                 }
 
                 (*rgstr)++;
+                break;
             }
 
             case 0x04:{
 
                 switch (upper_instr_byte) {
-                    case 0x00:{//incr b
+                    case 0x00:{//INC B
                         uint8_t b_reg = static_cast<uint8_t>((this -> bc_register & 0xFF00) >> 8);
+                        uint8_t inc_rgstr = inc_8bit_rgstr(b_reg);
+
+                        this -> bc_register = (this -> bc_register & 0x00FF) | static_cast<uint16_t>(inc_rgstr) << 8;
+                        break;
                     }
 
-                    case 0x01:{
+                    case 0x10:{//INC D
+                        uint8_t d_reg = static_cast<uint8_t>((this -> de_register & 0xFF00) >> 8);
+                        uint8_t inc_rgstr = inc_8bit_rgstr(d_reg);
+
+                        this -> de_register = (this -> de_register & 0x00FF) | static_cast<uint16_t>(inc_rgstr) << 8;
+                        break;
+                    }
+
+                    case 0x20:{//INC H
+                        uint8_t h_reg = static_cast<uint8_t>((this -> hl_register & 0xFF00) >> 8);
+                        uint8_t inc_rgstr = inc_8bit_rgstr(h_reg);
+
+                        this -> hl_register = (this -> hl_register & 0x00FF) | static_cast<uint16_t>(inc_rgstr) << 8;
+                        break;
+                    }
+
+                    case 0x30:{//INC HL
+                        uint8_t data = memory.read(this -> hl_register);
+                        uint8_t inc_data = inc_8bit_rgstr(data);
+
+                        memory.write(this -> hl_register, inc_data);
+                        break;
+                    }
+                }
+                break;
+            }
+
+            case 0x05:{
+
+                switch(upper_instr_byte){
+                    case 0x00:{
 
                     }
 
-                    case 0x02:{
+                    case 0x10:{
 
                     }
 
-                    case 0x03:{
+                    case 0x20:{
+
+                    }
+
+                    case 0x30:{
 
                     }
                 }
+                break;
             }
 
         }

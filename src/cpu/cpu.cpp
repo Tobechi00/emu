@@ -19,20 +19,39 @@ void cpu::run(memory &memory){//start instruction execution
 
 uint8_t cpu::inc_8bit_rgstr(uint8_t rgstr){
 
-    this -> af_register = this -> af_register & 0xF0;//unset all flags including N flag - always uset on incr operation
+    this -> af_register = this -> af_register & 0xFF1F;//unset all flags except carry
 
     if(rgstr == 0xFF){//inc will cause it to become zero, wrap around
         this -> af_register = this->af_register | 0x80;//Z: 0x80
     }
 
-    uint8_t lower_byte = rgstr & 0x0F;
+    uint8_t lower_4bits = rgstr & 0x0F;
 
-    if(lower_byte == 0x0F){//if all lower bits are set or the three last lower bits a half carry will always be made on inc
+    if(lower_4bits == 0x0F){//if all lower bits are set a half carry will always be made on inc
         this -> af_register = this->af_register | 0x20;//HC: 0x20
     }
 
     return ++rgstr;
 }
+
+uint8_t cpu::dec_8bit_rgstr(uint8_t rgstr){
+    this -> af_register = (this -> af_register & 0xFF1F);//unset all flags except carry
+
+    this -> af_register = this -> af_register | 0x40;// set nflag 0x40;
+
+    if(rgstr == 0x01){//if decremented will bear zero
+        this -> af_register = this -> af_register | 0x80;//set zero flag 0x80
+    }
+
+    uint8_t lower_4bits = rgstr & 0x0F;
+
+    if(lower_4bits == 0x00){
+        this -> af_register = this -> af_register | 0x20;//set HC;
+    }
+
+    return --rgstr;
+}
+
 
 
 void cpu::execute(uint8_t instruction, memory &memory){
@@ -51,7 +70,6 @@ void cpu::execute(uint8_t instruction, memory &memory){
         case 0x33: case 0x34: case 0x35: case 0x3B: case 0x3C: case 0x1D:
 
         switch (lower_instr_byte) {
-            uint16_t * rgstr;
 
             case 0x03:{
                 uint16_t * rgstr;
@@ -61,44 +79,215 @@ void cpu::execute(uint8_t instruction, memory &memory){
                         break;
                     }
 
-                    case 0x01:{//incr de
+                    case 0x10:{//incr de
                         rgstr = &this->de_register;
                         break;
                     }
 
-                    case 0x02:{//incr hl
+                    case 0x20:{//incr hl
                         rgstr = &this->hl_register;
                         break;
                     }
 
-                    case 0x03:{//incr sp
+                    case 0x30:{//incr sp
                         rgstr = &this->stack_pointer;
                         break;
                     }
                 }
 
                 (*rgstr)++;
+                break;
             }
 
             case 0x04:{
 
                 switch (upper_instr_byte) {
-                    case 0x00:{//incr b
-                        uint8_t b_reg = static_cast<uint8_t>((this -> bc_register & 0xFF00) >> 8);
+                    case 0x00:{//INC B
+                        uint8_t b_rgstr = static_cast<uint8_t>((this -> bc_register & 0xFF00) >> 8);
+                        uint16_t inc_rgstr = (static_cast<uint16_t>(inc_8bit_rgstr(b_rgstr)) << 8);
+
+                        this -> bc_register = (this -> bc_register & 0x00FF) | inc_rgstr;
+                        break;
                     }
 
-                    case 0x01:{
+                    case 0x10:{//INC D
+                        uint8_t d_rgstr = static_cast<uint8_t>((this -> de_register & 0xFF00) >> 8);
+                        uint16_t inc_rgstr = (static_cast<uint16_t>(inc_8bit_rgstr(d_rgstr)) << 8);
 
+                        this -> de_register = (this -> de_register & 0x00FF) | inc_rgstr;
+                        break;
                     }
 
-                    case 0x02:{
+                    case 0x20:{//INC H
+                        uint8_t h_rgstr = static_cast<uint8_t>((this -> hl_register & 0xFF00) >> 8);
+                        uint16_t inc_rgstr = (static_cast<uint16_t>(inc_8bit_rgstr(h_rgstr)) << 8);
 
+                        this -> hl_register = (this -> hl_register & 0x00FF) | inc_rgstr;
+                        break;
                     }
 
-                    case 0x03:{
+                    case 0x30:{//INC (HL)
+                        uint8_t data = memory.read(this -> hl_register);
+                        uint8_t inc_data = inc_8bit_rgstr(data);
 
+                        memory.write(this-> hl_register, inc_data);
+                        break;
                     }
+                    break;
                 }
+
+                break;
+            }
+
+            case 0x05:{
+
+                switch (upper_instr_byte) {
+
+                    case 0x00:{//DEC B
+                        uint8_t b_rgstr = static_cast<uint8_t>((this -> bc_register & 0xFF00) >> 8);
+                        uint16_t dec_rgstr = (static_cast<uint16_t>(dec_8bit_rgstr(b_rgstr)) << 8);
+
+                        this -> bc_register = (this -> bc_register & 0x00FF) | dec_rgstr;
+                        break;
+                    }
+
+                    case 0x10:{//DEC D
+                        uint8_t d_rgstr = static_cast<uint8_t>((this -> de_register & 0xFF00) >> 8);
+                        uint16_t dec_rgstr = (static_cast<uint16_t>(dec_8bit_rgstr(d_rgstr)) << 8);
+
+                        this -> de_register = (this -> de_register & 0x00FF) | dec_rgstr;
+                        break;
+                    }
+
+                    case 0x20:{//DEC H
+                        uint8_t h_rgstr = static_cast<uint8_t>((this -> hl_register & 0xFF00) >> 8);
+                        uint16_t dec_rgstr = (static_cast<uint16_t>(dec_8bit_rgstr(h_rgstr)) << 8);
+
+                        this -> hl_register = (this -> hl_register & 0x00FF) | dec_rgstr;
+                        break;
+                    }
+
+                    case 0x30:{//DEC (HL)
+                        uint8_t data = memory.read(this -> hl_register);
+                        uint8_t dec_data = dec_8bit_rgstr(data);
+
+                        memory.write(this-> hl_register, dec_data);
+                        break;
+                    }
+
+                    break;
+                }
+
+                break;
+            }
+
+            case 0x0B:{
+                uint16_t * rgstr;
+                switch (upper_instr_byte) {
+                    case 0x00:{//DEC BC
+                        rgstr = &this->bc_register;
+                        break;
+                    }
+
+                    case 0x10:{//DEC DE
+                        rgstr = &this->de_register;
+                        break;
+                    }
+
+                    case 0x20:{//DEC HL
+                        rgstr = &this->hl_register;
+                        break;
+                    }
+
+                    case 0x30:{//DEC SP
+                        rgstr = &this->stack_pointer;
+                        break;
+                    }
+                    break;
+                }
+
+                (*rgstr)--;
+                break;
+            }
+
+            case 0x0C:{
+
+                switch (upper_instr_byte) {
+                    case 0x00:{//INC C
+                        uint8_t c_rgstr = static_cast<uint8_t>(this -> bc_register & 0x00FF);
+                        uint16_t inc_rgstr = static_cast<uint16_t>(inc_8bit_rgstr(c_rgstr));
+
+                        this -> bc_register = (this -> bc_register & 0xFF00) | inc_rgstr;
+                        break;
+                    }
+
+                    case 0x10:{//INC E
+                        uint8_t e_rgstr = static_cast<uint8_t>(this -> de_register & 0x00FF);
+                        uint16_t inc_rgstr = static_cast<uint16_t>(inc_8bit_rgstr(e_rgstr));
+
+                        this -> de_register = (this -> de_register & 0xFF00) | inc_rgstr;
+                        break;
+                    }
+
+                    case 0x20:{//INC L
+                        uint8_t l_rgstr = static_cast<uint8_t>(this -> hl_register & 0x00FF);
+                        uint16_t inc_rgstr = static_cast<uint16_t>(inc_8bit_rgstr(l_rgstr));
+
+                        this -> hl_register = (this -> hl_register & 0xFF00) | inc_rgstr;
+                        break;
+                    }
+
+                    case 0x03:{//INC A
+                        uint8_t a_rgstr = static_cast<uint8_t>(this -> af_register & 0x00FF);
+                        uint16_t inc_rgstr = static_cast<uint16_t>(inc_8bit_rgstr(a_rgstr));
+
+                        this -> af_register = (this -> af_register & 0xFF00) | inc_rgstr;
+                        break;
+                    }
+
+                    break;
+                }
+                break;
+            }
+
+            case 0x0D:{
+
+                switch (upper_instr_byte) {
+                    case 0x00:{//DEC C
+                        uint8_t c_rgstr = static_cast<uint8_t>(this -> bc_register & 0x00FF);
+                        uint16_t dec_rgstr = static_cast<uint16_t>(dec_8bit_rgstr(c_rgstr));
+
+                        this -> bc_register = (this -> bc_register & 0xFF00) | dec_rgstr;
+                        break;
+                    }
+
+                    case 0x10:{//DEC E
+                        uint8_t e_rgstr = static_cast<uint8_t>(this -> de_register & 0x00FF);
+                        uint16_t dec_rgstr = static_cast<uint16_t>(dec_8bit_rgstr(e_rgstr));
+
+                        this -> de_register = (this -> de_register & 0xFF00) | dec_rgstr;
+                        break;
+                    }
+
+                    case 0x20:{//DEC L
+                        uint8_t l_rgstr = static_cast<uint8_t>(this -> hl_register & 0x00FF);
+                        uint16_t dec_rgstr = static_cast<uint16_t>(dec_8bit_rgstr(l_rgstr));
+
+                        this -> hl_register = (this -> hl_register & 0xFF00) | dec_rgstr;
+                        break;
+                    }
+
+                    case 0x03:{//DEC A
+                        uint8_t a_rgstr = static_cast<uint8_t>(this -> af_register & 0x00FF);
+                        uint16_t dec_rgstr = static_cast<uint16_t>(dec_8bit_rgstr(a_rgstr));
+
+                        this -> af_register = (this -> af_register & 0xFF00) | dec_rgstr;
+                        break;
+                    }
+
+                    break;
+                }
+                break;
             }
 
         }
@@ -647,10 +836,6 @@ void cpu::execute(uint8_t instruction, memory &memory){
                 break;
             }
         }
-
-        case
-
-        break;
     }
 }
 

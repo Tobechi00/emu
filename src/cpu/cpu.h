@@ -24,7 +24,10 @@ class cpu{
     void init();
     void reset();
     void run(memory &memory);
+
+    private:
     void execute(uint8_t instruction, memory &memory);
     void inc_instr();
     uint8_t inc_8bit_rgstr(uint8_t rgstr);
+    uint8_t dec_8bit_rgstr(uint8_t rgstr);
 };

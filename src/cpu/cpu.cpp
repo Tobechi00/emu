@@ -22,7 +22,7 @@ uint8_t cpu::inc_8bit_rgstr(uint8_t rgstr){
     this -> af_register = this -> af_register & 0xFF1F;//unset all flags except carry
 
     if(rgstr == 0xFF){//inc will cause it to become zero, wrap around
-        this -> af_register = this->af_register | 0x80;//Z: 0x80
+        this -> af_register = this->af_register | 0x0080;//Z: 0x80
     }
 
     uint8_t lower_4bits = rgstr & 0x0F;
@@ -32,6 +32,29 @@ uint8_t cpu::inc_8bit_rgstr(uint8_t rgstr){
     }
 
     return ++rgstr;
+}
+
+void cpu::sum_16bit_rgstr(uint16_t &target_rgstr, uint16_t &oprnd_rgstr){
+    //16bit addition carry depends on 15th bit and half carry depends on 11th bit
+
+    //determine HC status
+    uint16_t result16bit_op = (target_rgstr & 0x0FFF) + (oprnd_rgstr & 0x0FFF);
+
+    if((result16bit_op & 0x1000) == 0x1000){//if a carry over into the 12th bit occurs
+        this -> af_register = this -> af_register | 0x20;//set HC;
+    }
+
+    //determine C status
+    uint32_t target32bit_rep = static_cast<uint32_t>(target_rgstr);
+    uint32_t oprnd32bit_rep = static_cast<uint32_t>(oprnd_rgstr);
+
+    uint32_t result32bit_op = target32bit_rep + oprnd32bit_rep;
+
+    if((result32bit_op & 0xFFFF0000) > 0x00000000){//if any change occurs to upper 8bits of 32bit rep then a carry has been performed
+        this -> af_register = this -> af_register | 0x10;//set carry
+    }
+
+    target_rgstr += oprnd_rgstr;
 }
 
 uint8_t cpu::dec_8bit_rgstr(uint8_t rgstr){
@@ -54,16 +77,16 @@ uint8_t cpu::dec_8bit_rgstr(uint8_t rgstr){
 
 
 
-void cpu::execute(uint8_t instruction, memory &memory){
+int cpu::execute(uint8_t instruction, memory &memory){
 
     uint8_t upper_instr_byte = instruction & 0xF0;
     uint8_t lower_instr_byte = instruction & 0x0F;
 
     switch (instruction) {
         case 0x00://NOP - 0x01
-        break;
+        return 4;
 
-        //increment and decrement op
+        //increment and decrement operations
         case 0x03: case 0x04: case 0x05: case 0x0B: case 0x0C: case 0x0D:
         case 0x13: case 0x14: case 0x15: case 0x1B: case 0x1C: case 0x2D:
         case 0x23: case 0x24: case 0x25: case 0x2B: case 0x2C: case 0x3D:
@@ -96,7 +119,7 @@ void cpu::execute(uint8_t instruction, memory &memory){
                 }
 
                 (*rgstr)++;
-                break;
+                return 8;
             }
 
             case 0x04:{
@@ -107,7 +130,7 @@ void cpu::execute(uint8_t instruction, memory &memory){
                         uint16_t inc_rgstr = (static_cast<uint16_t>(inc_8bit_rgstr(b_rgstr)) << 8);
 
                         this -> bc_register = (this -> bc_register & 0x00FF) | inc_rgstr;
-                        break;
+                        return 4;
                     }
 
                     case 0x10:{//INC D
@@ -115,7 +138,7 @@ void cpu::execute(uint8_t instruction, memory &memory){
                         uint16_t inc_rgstr = (static_cast<uint16_t>(inc_8bit_rgstr(d_rgstr)) << 8);
 
                         this -> de_register = (this -> de_register & 0x00FF) | inc_rgstr;
-                        break;
+                        return 4;
                     }
 
                     case 0x20:{//INC H
@@ -123,7 +146,7 @@ void cpu::execute(uint8_t instruction, memory &memory){
                         uint16_t inc_rgstr = (static_cast<uint16_t>(inc_8bit_rgstr(h_rgstr)) << 8);
 
                         this -> hl_register = (this -> hl_register & 0x00FF) | inc_rgstr;
-                        break;
+                        return 4;
                     }
 
                     case 0x30:{//INC (HL)
@@ -131,7 +154,7 @@ void cpu::execute(uint8_t instruction, memory &memory){
                         uint8_t inc_data = inc_8bit_rgstr(data);
 
                         memory.write(this-> hl_register, inc_data);
-                        break;
+                        return 4;
                     }
                     break;
                 }
@@ -148,7 +171,7 @@ void cpu::execute(uint8_t instruction, memory &memory){
                         uint16_t dec_rgstr = (static_cast<uint16_t>(dec_8bit_rgstr(b_rgstr)) << 8);
 
                         this -> bc_register = (this -> bc_register & 0x00FF) | dec_rgstr;
-                        break;
+                        return 4;
                     }
 
                     case 0x10:{//DEC D
@@ -156,7 +179,7 @@ void cpu::execute(uint8_t instruction, memory &memory){
                         uint16_t dec_rgstr = (static_cast<uint16_t>(dec_8bit_rgstr(d_rgstr)) << 8);
 
                         this -> de_register = (this -> de_register & 0x00FF) | dec_rgstr;
-                        break;
+                        return 4;
                     }
 
                     case 0x20:{//DEC H
@@ -164,7 +187,7 @@ void cpu::execute(uint8_t instruction, memory &memory){
                         uint16_t dec_rgstr = (static_cast<uint16_t>(dec_8bit_rgstr(h_rgstr)) << 8);
 
                         this -> hl_register = (this -> hl_register & 0x00FF) | dec_rgstr;
-                        break;
+                        return 4;
                     }
 
                     case 0x30:{//DEC (HL)
@@ -172,7 +195,7 @@ void cpu::execute(uint8_t instruction, memory &memory){
                         uint8_t dec_data = dec_8bit_rgstr(data);
 
                         memory.write(this-> hl_register, dec_data);
-                        break;
+                        return 4;
                     }
 
                     break;
@@ -186,22 +209,22 @@ void cpu::execute(uint8_t instruction, memory &memory){
                 switch (upper_instr_byte) {
                     case 0x00:{//DEC BC
                         rgstr = &this->bc_register;
-                        break;
+                        return 8;
                     }
 
                     case 0x10:{//DEC DE
                         rgstr = &this->de_register;
-                        break;
+                        return 8;
                     }
 
                     case 0x20:{//DEC HL
                         rgstr = &this->hl_register;
-                        break;
+                        return 8;
                     }
 
                     case 0x30:{//DEC SP
                         rgstr = &this->stack_pointer;
-                        break;
+                        return 8;
                     }
                     break;
                 }
@@ -218,7 +241,7 @@ void cpu::execute(uint8_t instruction, memory &memory){
                         uint16_t inc_rgstr = static_cast<uint16_t>(inc_8bit_rgstr(c_rgstr));
 
                         this -> bc_register = (this -> bc_register & 0xFF00) | inc_rgstr;
-                        break;
+                        return 4;
                     }
 
                     case 0x10:{//INC E
@@ -226,7 +249,7 @@ void cpu::execute(uint8_t instruction, memory &memory){
                         uint16_t inc_rgstr = static_cast<uint16_t>(inc_8bit_rgstr(e_rgstr));
 
                         this -> de_register = (this -> de_register & 0xFF00) | inc_rgstr;
-                        break;
+                        return 4;
                     }
 
                     case 0x20:{//INC L
@@ -234,7 +257,7 @@ void cpu::execute(uint8_t instruction, memory &memory){
                         uint16_t inc_rgstr = static_cast<uint16_t>(inc_8bit_rgstr(l_rgstr));
 
                         this -> hl_register = (this -> hl_register & 0xFF00) | inc_rgstr;
-                        break;
+                        return 4;
                     }
 
                     case 0x03:{//INC A
@@ -242,7 +265,7 @@ void cpu::execute(uint8_t instruction, memory &memory){
                         uint16_t inc_rgstr = static_cast<uint16_t>(inc_8bit_rgstr(a_rgstr));
 
                         this -> af_register = (this -> af_register & 0xFF00) | inc_rgstr;
-                        break;
+                        return 4;
                     }
 
                     break;
@@ -258,7 +281,7 @@ void cpu::execute(uint8_t instruction, memory &memory){
                         uint16_t dec_rgstr = static_cast<uint16_t>(dec_8bit_rgstr(c_rgstr));
 
                         this -> bc_register = (this -> bc_register & 0xFF00) | dec_rgstr;
-                        break;
+                        return 4;
                     }
 
                     case 0x10:{//DEC E
@@ -266,7 +289,7 @@ void cpu::execute(uint8_t instruction, memory &memory){
                         uint16_t dec_rgstr = static_cast<uint16_t>(dec_8bit_rgstr(e_rgstr));
 
                         this -> de_register = (this -> de_register & 0xFF00) | dec_rgstr;
-                        break;
+                        return 4;
                     }
 
                     case 0x20:{//DEC L
@@ -274,7 +297,7 @@ void cpu::execute(uint8_t instruction, memory &memory){
                         uint16_t dec_rgstr = static_cast<uint16_t>(dec_8bit_rgstr(l_rgstr));
 
                         this -> hl_register = (this -> hl_register & 0xFF00) | dec_rgstr;
-                        break;
+                        return 4;
                     }
 
                     case 0x03:{//DEC A
@@ -282,7 +305,7 @@ void cpu::execute(uint8_t instruction, memory &memory){
                         uint16_t dec_rgstr = static_cast<uint16_t>(dec_8bit_rgstr(a_rgstr));
 
                         this -> af_register = (this -> af_register & 0xFF00) | dec_rgstr;
-                        break;
+                        return 4;
                     }
 
                     break;
@@ -290,6 +313,32 @@ void cpu::execute(uint8_t instruction, memory &memory){
                 break;
             }
 
+        }
+
+        //upper ADD instructions
+        case 0x09: case 0x19: case 0x29: case 0x39:
+        switch (upper_instr_byte) {
+
+            case 0x00:{
+                sum_16bit_rgstr(this -> hl_register, this -> bc_register);
+                return 8;
+            }
+
+            case 0x10:{
+                sum_16bit_rgstr(this -> hl_register, this -> de_register);
+                return 8;
+            }
+
+            case 0x20:{
+                sum_16bit_rgstr(this -> hl_register, this -> hl_register);
+                return 8;
+            }
+
+            case 0x30:{
+                sum_16bit_rgstr(this -> hl_register, this -> stack_pointer);
+                return 8;
+            }
+            break;
         }
 
         //upper load instructions
@@ -333,7 +382,7 @@ void cpu::execute(uint8_t instruction, memory &memory){
                 uint16_t data = (static_cast<uint16_t>(upper_byte) << 8) | lower_byte;//move combine upper and lower byte
 
                 *rgstr = data;
-                break;
+                return 12;
             }
 
             case 0x02:{
@@ -342,22 +391,22 @@ void cpu::execute(uint8_t instruction, memory &memory){
                 switch (upper_instr_byte) {//write upper a_reg value into memory addr
                     case 0x00:{
                         memory.write(this -> bc_register, a_reg);
-                        break;
+                        return 8;
                     }
 
                     case 0x10:{
                         memory.write(this -> de_register, a_reg);
-                        break;
+                        return 8;
                     }
 
                     case 0x20:{
                         memory.write(++this -> hl_register, a_reg);
-                        break;
+                        return 8;
                     }
 
                     case 0x30:{
                         memory.write(--this -> hl_register, a_reg);
-                        break;
+                        return 8;
                     }
                 }
             }
@@ -369,22 +418,22 @@ void cpu::execute(uint8_t instruction, memory &memory){
                 switch(upper_instr_byte){
                     case 0x00:{
                         this -> bc_register = (this -> bc_register & 0x00FF) | data;//clear b register and replace with data
-                        break;
+                        return 8;
                     }
 
                     case 0x10:{
                         this -> de_register = (this -> de_register & 0x00FF) | data;
-                        break;
+                        return 8;
                     }
 
                     case 0x20:{
                         this -> hl_register = (this -> hl_register & 0x00FF) | data;
-                        break;
+                        return 8;
                     }
 
                     case 0x30:{//write u8 data into the memory address pointed to by the hl_register
                         memory.write(this -> hl_register, high_byte);
-                        break;
+                        return 8;
                     }
                 }
             }
@@ -400,7 +449,7 @@ void cpu::execute(uint8_t instruction, memory &memory){
 
                 memory.write(data + 1, sp_upper_byte);
                 memory.write(data, sp_lower_byte);
-                break;
+                return 20;
             }
 
             case 0x0A:{
@@ -431,7 +480,7 @@ void cpu::execute(uint8_t instruction, memory &memory){
                 }
 
                 this -> af_register = (this -> af_register & 0x00FF) | data;//clear a reg and replace with data
-                break;
+                return 8;
             }
 
             case 0x0E:{
@@ -440,19 +489,22 @@ void cpu::execute(uint8_t instruction, memory &memory){
                 switch (upper_instr_byte) {
                     case 0x00:{
                         this -> bc_register = (this -> bc_register & 0xFF00) | data;
-                        break;
+                        return 8;
                     }
 
                     case 0x10:{
                         this -> de_register = (this -> de_register & 0xFF00) | data;
+                        return 8;
                     }
 
                     case 0x20:{
                         this -> hl_register = (this -> hl_register & 0xFF00) | data;
+                        return 8;
                     }
 
                     case 0x30:{
                         this -> af_register = (this -> af_register & 0x00FF) | (data << 8);
+                        return 8;
                     }
                 }
                 break;
@@ -482,7 +534,7 @@ void cpu::execute(uint8_t instruction, memory &memory){
 
         //row 4
         case 0x70: case 0x71: case 0x72: case 0x73:
-        case 0x74: case 0x75:            case 0x77://halt op excluded an impl somewhere else
+        case 0x74: case 0x75:            case 0x77://halt op excluded and impl somewhere else
         case 0x78: case 0x79: case 0x7A: case 0x7B:
         case 0x7C: case 0x7D: case 0x7E: case 0x7F:
 
@@ -493,83 +545,83 @@ void cpu::execute(uint8_t instruction, memory &memory){
                 switch (lower_instr_byte) {
                     case 0x00:{//load b into b
                         //no op equivalent
-                        break;
+                        return 4;
                     }
 
                     case 0x01:{//load c into b
                         this -> bc_register = this -> bc_register & 0x00FF | ((this -> bc_register & 0x00FF) << 8);
-                        break;
+                        return 4;
                     }
 
                     case 0x02:{//load d into b
                         this -> bc_register = this -> bc_register & 0x00FF | (this -> de_register & 0xFF00);
-                        break;
+                        return 4;
                     }
 
                     case 0x03:{//load e into b
                         this -> bc_register = this -> bc_register & 0x00FF | ((this -> de_register & 0x00FF) << 8);
-                        break;
+                        return 4;
                     }
 
                     case 0x04:{//load h into b
                         this -> bc_register = this -> bc_register & 0x00FF | (this -> hl_register & 0xFF00);
-                        break;
+                        return 4;
                     }
 
                     case 0x05:{//load l into b
                         this -> bc_register = this -> bc_register & 0x00FF | ((this -> hl_register & 0x00FF) << 8);
-                        break;
+                        return 4;
                     }
 
                     case 0x06:{//load (HL) into b
                         uint16_t data = static_cast<uint16_t>(memory.read(hl_register)) << 8;
                         this -> bc_register = this -> bc_register & 0x00FF | data;
-                        break;
+                        return 8;
                     }
 
                     case 0x07:{//load a into b
                         this -> bc_register = this -> bc_register & 0x00FF | (this -> af_register & 0xFF00);
-                        break;
+                        return 4;
                     }
 
                     case 0x08:{//load b into c
                         this -> bc_register = this -> bc_register & 0xFF00 | ((this -> bc_register & 0xFF00) >> 8);
-                        break;
+                        return 4;
                     }
 
                     case 0x09:{//load c into c nop
-                        break;
+                        return 4;
                     }
 
                     case 0x0A:{//load d into c
                         this -> bc_register = this -> bc_register & 0xFF00 | ((this -> de_register & 0xFF00) >> 8);
-                        break;
+                        return 4;
                     }
 
                     case 0x0B:{//load e into c
                         this -> bc_register = this -> bc_register & 0xFF00 | (this -> de_register & 0x00FF);
-                        break;
+                        return 4;
                     }
 
                     case 0x0C:{//load h into c
                         this -> bc_register = this -> bc_register & 0xFF00 | ((this -> hl_register & 0xFF00) >> 8);
-                        break;
+                        return 4;
                     }
 
                     case 0x0D:{//load l into c
                         this -> bc_register = this -> bc_register & 0xFF00 | (this -> hl_register & 0x00FF);
-                        break;
+                        return 4;
                     }
 
                     case 0x0E:{//load (hl) into c
                         uint16_t data = static_cast<uint16_t>(memory.read(hl_register));
                         this -> bc_register = this -> bc_register & 0xFF00 | data;
-                        break;
+                        return 8;
                     }
 
                     case 0x0F:{//load a into c
                         this -> bc_register = this -> bc_register & 0xFF00 | ((this -> af_register & 0xFF00) >> 8);
-                        break;
+                        return 4;
                     }
 
                 }
@@ -581,82 +633,82 @@ void cpu::execute(uint8_t instruction, memory &memory){
 
                     case 0x00:{//load b into d
                         this -> de_register = this -> de_register & 0x00FF | (this -> bc_register & 0xFF00);
-                        break;
+                        return 4;
                     }
 
                     case 0x01:{
                         this -> de_register = this -> de_register & 0x00FF | ((this -> bc_register & 0x00FF) << 8);
-                        break;
+                        return 4;
                     }
 
                     case 0x02:{//load d into d noop
-                        break;
+                        return 4;
                     }
 
                     case 0x03:{//load e intp d
                         this -> de_register = this -> de_register & 0x00FF | ((this -> de_register & 0x00FF) << 8);
-                        break;
+                        return 4;
                     }
 
                     case 0x04:{//load h into d
                         this -> de_register = this -> de_register & 0x00FF | (this -> hl_register & 0xFF00);
-                        break;
+                        return 4;
                     }
 
                     case 0x05:{//load l into d
                         this -> de_register = this -> de_register & 0x00FF | ((this -> hl_register & 0x00FF) << 8);
-                        break;
+                        return 4;
                     }
 
                     case 0x06:{//load (hl) into d
                         uint16_t data = static_cast<uint16_t>(memory.read(hl_register)) << 8;
                         this -> de_register = this -> de_register & 0x00FF | data;
-                        break;
+                        return 8;
                     }
 
                     case 0x07:{//load A into d
                         this -> de_register = this -> de_register & 0x00FF | (this -> af_register & 0xFF00);
-                        break;
+                        return 4;
                     }
 
                     case 0x08:{//load b into e
                         this -> de_register = this -> de_register & 0xFF00 | ((this -> bc_register & 0xFF00) >> 8);
-                        break;
+                        return 4;
                     }
 
                     case 0x09:{//load c into e
                         this -> de_register = this -> de_register & 0xFF00 | (this -> bc_register & 0x00FF);
-                        break;
+                        return 4;
                     }
 
                     case 0x0A:{//load d into e
                         this -> de_register = this -> de_register & 0xFF00 | ((this -> de_register & 0xFF00) >> 8);
-                        break;
+                        return 4;
                     }
 
                     case 0x0B:{//load e into e nop
-                        break;
+                        return 4;
                     }
 
                     case 0x0C:{//load h into e
                         this -> de_register = this -> de_register & 0xFF00 | ((this -> hl_register & 0xFF00) >> 8);
-                        break;
+                        return 4;
                     }
 
                     case 0x0D:{//load l into e
                         this -> de_register = this -> de_register & 0xFF00 | (this -> hl_register & 0x00FF);
-                        break;
+                        return 4;
                     }
 
                     case 0x0E:{//load hl into e
                         uint8_t data = memory.read(this -> hl_register);
                         this -> de_register = this -> de_register & 0xFF00 | data;
-                        break;
+                        return 8;
                     }
 
                     case 0x0F:{//load a into e
                         this -> de_register = this -> de_register & 0xFF00 | ((this -> af_register & 0xFF00) >> 8);
-                        break;
+                        return 4;
                     }
                 }
                 break;
@@ -667,82 +719,82 @@ void cpu::execute(uint8_t instruction, memory &memory){
                 switch (lower_instr_byte) {
                     case 0x00:{//load b into h
                         this -> hl_register = this->hl_register & 0x00FF | (this -> bc_register & 0xFF00);
-                        break;
+                        return 4;
                     }
 
                     case 0x01:{//load c into h
                         this -> hl_register = this->hl_register & 0x00FF | ((this -> bc_register  & 0x00FF) << 8);
-                        break;
+                        return 4;
                     }
 
                     case 0x02:{//load d into h
                         this -> hl_register = this->hl_register & 0x00FF | (this -> de_register & 0xFF00);
-                        break;
+                        return 4;
                     }
 
                     case 0x03:{//load e into h
                         this -> hl_register = this->hl_register & 0x00FF | ((this -> de_register & 0x00FF) << 8);
-                        break;
+                        return 4;
                     }
 
                     case 0x04:{//load h into h nop
-                        break;
+                        return 4;
                     }
 
                     case 0x05:{//load l into h
                         this -> hl_register = this->hl_register & 0x00FF |((this -> hl_register & 0x00FF) << 8);
-                        break;
+                        return 4;
                     }
 
                     case 0x06:{//load (hl) into h
                         uint16_t data = static_cast<uint16_t>(memory.read(this -> hl_register)) << 8;
                         this -> hl_register = this->hl_register & 0x00FF | data;
-                        break;
+                        return 8;
                     }
 
                     case 0x07:{//load a into h;
                         this -> hl_register = this -> hl_register & 0x00FF | (this -> af_register & 0xFF00);
-                        break;
+                        return 4;
                     }
 
                     case 0x08:{//load b into l
                         this -> hl_register = this -> hl_register & 0xFF00 | ((this ->bc_register & 0xFF00) >> 8);
-                        break;
+                        return 4;
                     }
 
                     case 0x09:{//load c into l
                         this -> hl_register = this -> hl_register & 0xFF00 | (this -> bc_register & 0x00FF);
-                        break;
+                        return 4;
                     }
 
                     case 0x0A:{//load d into l
                         this -> hl_register = this -> hl_register & 0xFF00 | ((this -> de_register & 0xFF00) >> 8);
-                        break;
+                        return 4;
                     }
 
                     case 0x0B:{//load e into l
                         this -> hl_register = this -> hl_register & 0xFF00 | (this -> de_register & 0x00FF);
-                        break;
+                        return 4;
                     }
 
                     case 0x0C:{//load h into l
                         this -> hl_register = this -> hl_register & 0xFF00 | ((this -> hl_register & 0xFF00) >> 8);
-                        break;
+                        return 4;
                     }
 
                     case 0x0D:{//load l into l noop
-                        break;
+                        return 4;
                     }
 
                     case 0x0E:{//load hl into l
                         uint16_t data = static_cast<uint16_t>(memory.read(this -> hl_register));
                         this -> hl_register = this -> hl_register & 0xFF00 | data;
-                        break;
+                        return 8;
                     }
 
                     case 0x0F:{//load a into l
                         this -> hl_register = this -> hl_register & 0xFF00 | ((this -> af_register & 0xFF00) >> 8);
-                        break;
+                        return 4;
                     }
                 }
                 break;
@@ -754,82 +806,82 @@ void cpu::execute(uint8_t instruction, memory &memory){
                     case 0x00:{//load b into hl addr
                         uint8_t b_reg = static_cast<uint8_t>(((this -> bc_register & 0xFF00) >> 8));
                         memory.write(this -> hl_register, b_reg);
-                        break;
+                        return 8;
 
                     }case 0x01:{//load c into hl_addr
                         uint8_t c_reg = static_cast<uint8_t>(this -> bc_register & 0x00FF);
                         memory.write(this -> hl_register, c_reg);
-                        break;
+                        return 8;
                     }
 
                     case 0x02:{//load d into hl_addr
                         uint8_t d_reg = static_cast<uint8_t>(((this -> de_register & 0xFF00) >> 8));
                         memory.write(this -> hl_register, d_reg);
-                        break;
+                        return 8;
                     }
 
                     case 0x03:{//load e into hl_addr
                         uint8_t e_reg = static_cast<uint8_t>(this -> de_register & 0x00FF);
                         memory.write(this -> hl_register, e_reg);
-                        break;
+                        return 8;
                     }
 
                     case 0x04:{//load h into hl_addr
                         uint8_t h_reg = static_cast<uint8_t>(((this -> hl_register & 0xFF00) >> 8));
                         memory.write(this -> hl_register, h_reg);
-                        break;
+                        return 8;
                     }
 
                     case 0x05:{//load l into hl_addr
                         uint8_t l_reg = static_cast<uint8_t>(this -> hl_register & 0x00FF);
                         memory.write(this -> hl_register, l_reg);
-                        break;
+                        return 8;
                     }
                     //6 is halt under halt category
                     case 0x07:{
                         uint8_t a_reg = static_cast<uint8_t>(((this -> af_register & 0xFF00) >> 8));
                         memory.write(this->hl_register, a_reg);
-                        break;
+                        return 8;
                     }
 
                     case 0x08:{//load b into a
                         this -> af_register = this -> af_register & 0x00FF | (this -> bc_register & 0xFF00);
-                        break;
+                        return 4;
                     }
 
                     case 0x09:{//load c into a
                         this -> af_register = this -> af_register & 0x00FF | ((this -> bc_register & 0x00FF) << 8);
-                        break;
+                        return 4;
                     }
 
                     case 0x0A:{//load d into a
                         this -> af_register = this -> af_register & 0x00FF | (this -> de_register & 0xFF00);
-                        break;
+                        return 4;
                     }
 
                     case 0x0B:{//load e into a
                         this -> af_register = this -> af_register & 0x00FF | ((this -> de_register & 0x00FF) << 8);
-                        break;
+                        return 4;
                     }
 
                     case 0x0C:{//Load h into a
                         this -> af_register = this -> af_register & 0x00FF | (this -> hl_register & 0xFF00);
-                        break;
+                        return 4;
                     }
 
                     case 0x0D:{//load l into a
                         this -> af_register = this -> af_register & 0x00FF | ((this -> hl_register & 0x00FF) << 8);
-                        break;
+                        return 4;
                     }
 
                     case 0x0E:{//load hl into a
                         uint16_t data = static_cast<uint16_t>(memory.read(this -> hl_register)) << 8;
                         this -> af_register = this -> af_register & 0x00FF | data;
-                        break;
+                        return 8;
                     }
 
                     case 0x0F:{//load a into a nop
-                        break;
+                        return 4;
                     }
                     break;
                 }
@@ -837,6 +889,7 @@ void cpu::execute(uint8_t instruction, memory &memory){
             }
         }
     }
+    return 0;
 }
 
 

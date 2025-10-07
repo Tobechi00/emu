@@ -34,7 +34,7 @@ uint8_t cpu::inc_8bit_rgstr(uint8_t rgstr){
     return ++rgstr;
 }
 
-void cpu::sum_16bit_rgstr(uint16_t &target_rgstr, uint16_t &oprnd_rgstr){
+void cpu::add_16bit_rgstr(uint16_t &target_rgstr, uint16_t &oprnd_rgstr){
     //16bit addition carry depends on 15th bit and half carry depends on 11th bit
 
     //determine HC status
@@ -56,6 +56,77 @@ void cpu::sum_16bit_rgstr(uint16_t &target_rgstr, uint16_t &oprnd_rgstr){
 
     target_rgstr += oprnd_rgstr;
 }
+
+uint8_t cpu::add_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr){
+
+    this -> af_register = this -> af_register & 0xFF0F;//unset all flags including negative (add op negative is unaffected)
+
+    //max possible values
+    uint16_t max_8bit_int = static_cast<uint16_t>(255);
+    uint8_t max_4bit_int = static_cast<uint8_t>(15);
+
+    //check for half carry
+    uint8_t sum_4bit = (target_rgstr & 0x0F) + (oprnd_rgstr & 0x0F);
+
+    if(sum_4bit  > max_4bit_int){//if sum is greater than 15 a carry occurred
+        this -> af_register = this -> af_register | 0x0020;//set hc
+    }
+
+    //check for carry
+    uint16_t sum_16bit = static_cast<uint16_t>(target_rgstr + oprnd_rgstr);
+
+    if(sum_16bit > max_8bit_int){//if sum is greater than 255 a carry occurred
+        this -> af_register = this -> af_register | 0x0010;//set c
+    }
+
+    uint8_t sum_8bit_rep = static_cast<uint8_t>(sum_16bit);//convert to 8 bit rep
+
+    if(sum_8bit_rep == 0x00){//if 8bit rep is empty
+        this -> af_register = this -> af_register | 0x0080;//set zero
+    }
+
+    return sum_8bit_rep;
+}
+
+
+uint8_t cpu::adc_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr){
+    uint8_t carry_flag = static_cast<uint8_t>(this -> af_register & 0x0010);//get carry
+
+    if(carry_flag == 0x10){//if carry flag convert to 1
+        carry_flag = 0x01;
+    }else{
+        carry_flag = 0x00;
+    }
+
+    this -> af_register = this -> af_register & 0xFF0F;//unset all flags
+
+    //max possible values
+    uint16_t max_8bit_int = static_cast<uint16_t>(255);
+    uint8_t max_4bit_int = static_cast<uint8_t>(15);
+
+    //check for half carry
+    uint8_t sum_4bit = (target_rgstr & 0x0F) + (oprnd_rgstr & 0x0F) + carry_flag;
+
+    if(sum_4bit  > max_4bit_int){//if sum is greater than 15 a carry occurred
+        this -> af_register = this -> af_register | 0x0020;//set hc
+    }
+
+    //check for carry
+    uint16_t sum_16bit = static_cast<uint16_t>(target_rgstr + oprnd_rgstr + carry_flag);
+
+    if(sum_16bit > max_8bit_int){//if sum is greater than 255 a carry occurred
+        this -> af_register = this -> af_register | 0x0010;//set c
+    }
+
+    uint8_t sum_8bit_rep = static_cast<uint8_t>(sum_16bit);//convert to 8 bit rep
+
+    if(sum_8bit_rep == 0x00){//if 8bit rep is empty
+        this -> af_register = this -> af_register | 0x0080;//set zero
+    }
+
+    return sum_8bit_rep;
+}
+
 
 uint8_t cpu::dec_8bit_rgstr(uint8_t rgstr){
     this -> af_register = (this -> af_register & 0xFF1F);//unset all flags except carry
@@ -320,25 +391,182 @@ int cpu::execute(uint8_t instruction, memory &memory){
         switch (upper_instr_byte) {
 
             case 0x00:{
-                sum_16bit_rgstr(this -> hl_register, this -> bc_register);
+                add_16bit_rgstr(this -> hl_register, this -> bc_register);
                 return 8;
             }
 
             case 0x10:{
-                sum_16bit_rgstr(this -> hl_register, this -> de_register);
+                add_16bit_rgstr(this -> hl_register, this -> de_register);
                 return 8;
             }
 
             case 0x20:{
-                sum_16bit_rgstr(this -> hl_register, this -> hl_register);
+                add_16bit_rgstr(this -> hl_register, this -> hl_register);
                 return 8;
             }
 
             case 0x30:{
-                sum_16bit_rgstr(this -> hl_register, this -> stack_pointer);
+                add_16bit_rgstr(this -> hl_register, this -> stack_pointer);
                 return 8;
             }
             break;
+        }
+
+        //RRCA
+        case 0x0F:{//rotates a reg by one bit
+
+            //unset zero negative hc and c
+            this -> af_register = this -> af_register & 0xFF0F;
+
+            //isolate a_reg
+            uint8_t a_reg = static_cast<uint8_t>((this -> af_register & 0xFF00) >> 8);
+
+            uint8_t bit_0 = a_reg & 0x01;//get zeroth bit
+            a_reg = a_reg >> 1; //shift to the right once
+
+            if(bit_0 == 0x01){//if a one was carried out
+                a_reg = a_reg | 0x80;//set bit 7;
+                this -> af_register = this -> af_register | 0x0010; //set carry
+            }
+
+            //set a_reg back into af_register
+            this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(a_reg) << 8); //set new a_reg
+
+            return 4;
+        }
+
+        //RRA - 0x1F
+        case 0x1F:{//rotates a reg by one bit and uses carry flag as 9th bit
+            //unset zero negative hc keep carry
+            this -> af_register = this -> af_register & 0xFF1F;
+
+            //isolate a_reg
+            uint8_t a_reg = static_cast<uint8_t>((this -> af_register & 0xFF00) >> 8);
+
+            uint8_t bit_0 = a_reg & 0x01;//get zeroth bit
+            a_reg = a_reg >> 1; //shift to the right once
+
+            if((this -> af_register & 0x0010) == 0x0010){// if carry flag is set
+                a_reg = a_reg | 0x80; //carry flag value is wrapped into bit 7;
+            }//else bit 7 is left as zero
+
+
+            if(bit_0 == 0x01){//if a one was carried out of bit zero its moved into the carry flag
+                this -> af_register = this -> af_register | 0x0010; //set carry
+            }else{
+                this -> af_register = this -> af_register & 0xFFEF;
+            }
+
+            //set a_reg back into af_register
+            this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(a_reg) << 8); //set new a_reg
+
+            return 4;
+        }
+
+        case 0x2F:{//CPL flip all the bits of register A
+            this -> af_register =  (this -> af_register ^ 0xFF00) | 0x0060;//flip then set n and hc
+
+            return 4;
+        }
+
+        case 0x3F:{// filp carry flag
+            this -> af_register = (this -> af_register & 0xFF9F); // unset n and hc
+
+            uint16_t mask = 0x0010;
+
+            uint16_t c_flag = af_register & mask;
+
+            if(c_flag == 0x0000){//if carry flag not set
+                this -> af_register = this -> af_register | 0x0010;//set carry
+            }else{
+                this -> af_register = this -> af_register & 0xFFEF;//unset carry
+            }
+
+            return 4;
+        }
+
+        case 0x27:{//DAA
+
+        }
+
+        case 0x37:{//SCF set carry flag
+            this -> af_register = this -> af_register | 0x0010;
+            return 4;
+        }
+
+
+        // all JR instructions
+        case 0x18: case 0x20: case 0x28: case 0x30:
+        case 0x38:
+
+        switch(lower_instr_byte){
+            case 0x00:{
+                switch (upper_instr_byte) {
+                    case 0x20:{//0x20 JR NZ
+                        bool is_zero_set = (this -> af_register & 0x0080) == 0x0080;
+
+                        if(!is_zero_set){
+                            int8_t data = static_cast<int8_t>(memory.read(++program_counter));
+                            this -> program_counter += data;
+
+                            return 12;
+                        }
+
+                        return 8;
+                    }
+
+                    case 0x30:{ //JR NC,i8 - 0x30
+                        bool is_carry_set = (this -> af_register & 0x0010) == 0x0010;
+
+                        if(!is_carry_set){
+                            int8_t data = static_cast<int8_t>(memory.read(++program_counter));
+                            this -> program_counter += data;
+
+                            return 12;
+                        }
+
+                        return 8;
+                    }
+                }
+            }
+
+            case 0x08:{
+                switch (upper_instr_byte) {//
+                    case 0x10:{//0x18 JR i8
+                        int8_t data = static_cast<int8_t>(memory.read(++program_counter));
+                        this -> program_counter += data;
+
+                        return 12;
+                    }
+
+                    case 0x20:{//0x28 JR Z
+
+                        bool is_zero_set = (this -> af_register & 0x0080) == 0x0080;
+
+                        if(is_zero_set){
+                            int8_t data = static_cast<int8_t>(memory.read(++program_counter));
+                            this -> program_counter += data;
+
+                            return 12;
+                        }
+
+                        return 8;
+                    }
+
+                    case 0x30:{//0x38 JR C
+                        bool is_carry_set = (this -> af_register & 0x0010) == 0x0010;
+
+                        if(is_carry_set){
+                            int8_t data = static_cast<int8_t>(memory.read(++program_counter));
+                            this -> program_counter += data;
+
+                            return 12;
+                        }
+
+                        return 8;
+                    }
+                }
+            }
         }
 
         //upper load instructions
@@ -888,6 +1116,192 @@ int cpu::execute(uint8_t instruction, memory &memory){
                 break;
             }
         }
+
+        //ALL LOWER ADD
+        case 0x80: case 0x81: case 0x82: case 0x83: case 0x84:
+        case 0x85: case 0x86: case 0x87:
+        switch (lower_instr_byte) {
+
+            case 0x00:{// ADD AB
+                uint8_t a_reg = static_cast<uint8_t>((this -> af_register & 0xFF00) >> 8);
+                uint8_t b_reg = static_cast<uint8_t>((this -> bc_register & 0xFF00) >> 8);
+
+                uint8_t sum = add_8bit_rgstr(a_reg, b_reg);
+
+                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+
+                return 4;
+            }
+
+            case 0x01:{//ADD AC
+                uint8_t a_reg = static_cast<uint8_t>((this -> af_register & 0xFF00) >> 8);
+                uint8_t c_reg = static_cast<uint8_t>(this -> bc_register);
+
+                uint8_t sum = add_8bit_rgstr(a_reg, c_reg);
+
+                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+
+                return 4;
+            }
+
+            case 0x02:{//ADD AD
+                uint8_t a_reg = static_cast<uint8_t>((this -> af_register & 0xFF00) >> 8);
+                uint8_t d_reg = static_cast<uint8_t>((this -> de_register & 0xFF00) >> 8);
+
+                uint8_t sum = add_8bit_rgstr(a_reg, d_reg);
+
+                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+
+                return 4;
+            }
+
+            case 0x03:{//ADD AE
+                uint8_t a_reg = static_cast<uint8_t>((this -> af_register & 0xFF00) >> 8);
+                uint8_t e_reg = static_cast<uint8_t>(this -> de_register);
+
+                uint8_t sum = add_8bit_rgstr(a_reg, e_reg);
+
+                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+
+                return 4;
+            }
+
+            case 0x04:{//ADD AH
+                uint8_t a_reg = static_cast<uint8_t>((this -> af_register & 0xFF00) >> 8);
+                uint8_t h_reg = static_cast<uint8_t>((this -> hl_register & 0xFF00) >> 8);
+
+                uint8_t sum = add_8bit_rgstr(a_reg, h_reg);
+
+                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+
+                return 4;
+            }
+
+            case 0x05:{//ADD AL
+                uint8_t a_reg = static_cast<uint8_t>((this -> af_register & 0xFF00) >> 8);
+                uint8_t l_reg = static_cast<uint8_t>(this -> hl_register);
+
+                uint8_t sum = add_8bit_rgstr(a_reg, l_reg);
+
+                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+
+                return 4;
+            }
+
+            case 0x06:{//ADD A HL
+                uint8_t a_reg = static_cast<uint8_t>((this -> af_register & 0xFF00) >> 8);
+                uint8_t data = memory.read(this -> hl_register);
+
+                uint8_t sum = add_8bit_rgstr(a_reg, data);
+
+                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+
+                return 4;
+            }
+
+            case 0x07:{//ADD AA
+                uint8_t a_reg = static_cast<uint8_t>((this -> af_register & 0xFF00) >> 8);
+
+                uint8_t sum = add_8bit_rgstr(a_reg, a_reg);
+
+                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+
+                return 4;
+            }
+        }
+
+        //ALL ADC
+        case 0x88: case 0x89: case 0x8A: case 0x8B: case 0x8C: case 0x8D: case 0x8E:
+        case 0x8F:
+        switch (lower_instr_byte) {
+            case 0x08:{//ADC AB
+                uint8_t a_reg = static_cast<uint8_t>((this -> af_register & 0xFF00) >> 8);
+                uint8_t b_reg = static_cast<uint8_t>((this -> bc_register & 0xFF00) >> 8);
+
+                uint8_t sum = adc_8bit_rgstr(a_reg, b_reg);
+
+                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+
+                return 4;
+            }
+
+            case 0x09:{//ADC AC
+                uint8_t a_reg = static_cast<uint8_t>((this -> af_register & 0xFF00) >> 8);
+                uint8_t c_reg = static_cast<uint8_t>(this -> bc_register);
+
+                uint8_t sum = adc_8bit_rgstr(a_reg, c_reg);
+
+                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+
+                return 4;
+            }
+
+            case 0x0A:{//ADC AD
+                uint8_t a_reg = static_cast<uint8_t>((this -> af_register & 0xFF00) >> 8);
+                uint8_t d_reg = static_cast<uint8_t>((this -> de_register & 0xFF00) >> 8);
+
+                uint8_t sum = adc_8bit_rgstr(a_reg, d_reg);
+
+                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+
+                return 4;
+            }
+
+            case 0x0B:{//ADC AE
+                uint8_t a_reg = static_cast<uint8_t>((this -> af_register & 0xFF00) >> 8);
+                uint8_t e_reg = static_cast<uint8_t>(this -> de_register);
+
+                uint8_t sum = adc_8bit_rgstr(a_reg, e_reg);
+
+                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+
+                return 4;
+            }
+
+            case 0x0C:{//ADC AH
+                uint8_t a_reg = static_cast<uint8_t>((this -> af_register & 0xFF00) >> 8);
+                uint8_t h_reg = static_cast<uint8_t>((this -> hl_register & 0xFF00) >> 8);
+
+                uint8_t sum = adc_8bit_rgstr(a_reg, h_reg);
+
+                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+
+                return 4;
+            }
+
+            case 0x0D:{//ADC AL
+                uint8_t a_reg = static_cast<uint8_t>((this -> af_register & 0xFF00) >> 8);
+                uint8_t l_reg = static_cast<uint8_t>(this -> hl_register);
+
+                uint8_t sum = adc_8bit_rgstr(a_reg, l_reg);
+
+                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+
+                return 4;
+            }
+
+            case 0x0E:{//ADC A HL
+                uint8_t a_reg = static_cast<uint8_t>((this -> af_register & 0xFF00) >> 8);
+                uint8_t data = memory.read(this -> hl_register);
+
+                uint8_t sum = adc_8bit_rgstr(a_reg, data);
+
+                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+
+                return 4;
+            }
+
+            case 0x0F:{//ADC AA
+                uint8_t a_reg = static_cast<uint8_t>((this -> af_register & 0xFF00) >> 8);
+
+                uint8_t sum = adc_8bit_rgstr(a_reg, a_reg);
+
+                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+
+                return 4;
+            }
+        }
+
     }
     return 0;
 }

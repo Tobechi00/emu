@@ -28,7 +28,14 @@ class cpu{
     private:
     int execute(uint8_t instruction, memory &memory);
     void inc_instr();
+
     uint8_t inc_8bit_rgstr(uint8_t rgstr);
+
     uint8_t dec_8bit_rgstr(uint8_t rgstr);
-    void sum_16bit_rgstr(uint16_t &target_rgstr, uint16_t &oprnd_rgstr);
+
+
+    void add_16bit_rgstr(uint16_t &target_rgstr, uint16_t &oprnd_rgstr);
+    uint8_t add_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr);
+
+    uint8_t adc_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr);
 };

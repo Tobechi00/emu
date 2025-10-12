@@ -36,6 +36,16 @@ class cpu{
 
     void add_16bit_rgstr(uint16_t &target_rgstr, uint16_t &oprnd_rgstr);
     uint8_t add_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr);
-
+    uint8_t sub_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr);
     uint8_t adc_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr);
+    uint8_t sbc_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr);
+    uint8_t and_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr);
+
+    uint8_t get_a_reg();
+    uint8_t get_b_reg();
+    uint8_t get_c_reg();
+    uint8_t get_d_reg();
+    uint8_t get_e_reg();
+    uint8_t get_h_reg();
+    uint8_t get_l_reg();
 };

@@ -1,7 +1,6 @@
 #include "src/memory/memory.h"
 #include <cstdint>
 #include "cpu.h"
-#include <iostream>
 #include <sys/types.h>
 
 cpu::cpu(){
@@ -18,6 +17,8 @@ void cpu::run(memory &memory){//start instruction execution
     execute(op_code, memory);
 }
 
+
+//GETTERS AND SETTERS//
 uint8_t cpu::get_a_reg(){
     return static_cast<uint8_t>((this-> af_register & 0xFF00) >> 8);
 }
@@ -46,18 +47,48 @@ uint8_t cpu::get_l_reg(){
     return static_cast<uint8_t>(this -> hl_register);
 }
 
+void cpu::set_z_flag(){
+    this -> af_register = this ->   af_register | 0x0080;
+}
+
+void cpu::set_n_flag(){
+    this -> af_register = this->   af_register | 0x0040;
+}
+
+void cpu::set_hc_flag(){
+    this -> af_register = this->  af_register | 0x0020;//set hc
+}
+
+void cpu::set_c_flag(){
+    this -> af_register = this ->  af_register | 0x0010;//set carry
+}
+
+void cpu::unset_c_flag(){
+    this -> af_register = this ->   af_register & 0xFFEF;
+}
+
+void cpu::unset_all_flags(){
+    this -> af_register = this -> af_register & 0xFF0F;
+}
+
+void cpu::set_a_reg(uint8_t val){
+    this -> af_register = (this -> af_register & 0x00FF) |   (static_cast<uint16_t>(val) << 8);
+}
+//----------------------//
+
+//HELPER METHODS//
 uint8_t cpu::inc_8bit_rgstr(uint8_t rgstr){
 
     this -> af_register = this -> af_register & 0xFF1F;//unset all flags except carry
 
     if(rgstr == 0xFF){//inc will cause it to become zero, wrap around
-        this -> af_register = this->af_register | 0x0080;//Z: 0x80
+        set_z_flag();//Z: 0x80
     }
 
     uint8_t lower_4bits = rgstr & 0x0F;
 
     if(lower_4bits == 0x0F){//if all lower bits are set a half carry will always be made on inc
-        this -> af_register = this->af_register | 0x20;//HC: 0x20
+        set_hc_flag();//HC: 0x20
     }
 
     return ++rgstr;
@@ -70,7 +101,7 @@ void cpu::add_16bit_rgstr(uint16_t &target_rgstr, uint16_t &oprnd_rgstr){
     uint16_t result16bit_op = (target_rgstr & 0x0FFF) + (oprnd_rgstr & 0x0FFF);
 
     if((result16bit_op & 0x1000) == 0x1000){//if a carry over into the 12th bit occurs
-        this -> af_register = this -> af_register | 0x20;//set HC;
+        set_hc_flag();//set HC;
     }
 
     //determine C status
@@ -79,16 +110,15 @@ void cpu::add_16bit_rgstr(uint16_t &target_rgstr, uint16_t &oprnd_rgstr){
 
     uint32_t result32bit_op = target32bit_rep + oprnd32bit_rep;
 
-    if((result32bit_op & 0xFFFF0000) > 0x00000000){//if any change occurs to upper 8bits of 32bit rep then a carry has been performed
-        this -> af_register = this -> af_register | 0x10;//set carry
+    if((result32bit_op & 0xFFFF0000) > 0x00000000){//if any chang occurs to upper 8bits of 32bit rep then a carry has been performed
+        set_c_flag();//set carry
     }
 
     target_rgstr += oprnd_rgstr;
 }
 
 uint8_t cpu::add_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr){
-
-    this -> af_register = this -> af_register & 0xFF0F;//unset all flags including negative (add op negative is unaffected)
+    unset_all_flags();//unset all flags including negative
 
     //max possible values
     uint16_t max_8bit_int = static_cast<uint16_t>(255);
@@ -98,27 +128,29 @@ uint8_t cpu::add_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr){
     uint8_t sum_4bit = (target_rgstr & 0x0F) + (oprnd_rgstr & 0x0F);
 
     if(sum_4bit  > max_4bit_int){//if sum is greater than 15 a carry occurred
-        this -> af_register = this -> af_register | 0x0020;//set hc
+        set_hc_flag();//set hc
     }
 
     //check for carry
     uint16_t sum_16bit = static_cast<uint16_t>(target_rgstr + oprnd_rgstr);
 
     if(sum_16bit > max_8bit_int){//if sum is greater than 255 a carry occurred
-        this -> af_register = this -> af_register | 0x0010;//set c
+        set_c_flag();//set c
     }
 
     uint8_t sum_8bit_rep = static_cast<uint8_t>(sum_16bit);//convert to 8 bit rep
 
     if(sum_8bit_rep == 0x00){//if 8bit rep is empty
-        this -> af_register = this -> af_register | 0x0080;//set zero
+        set_z_flag();//set zero
     }
 
     return sum_8bit_rep;
 }
 
 uint8_t cpu::sub_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr){
-    this -> af_register = (this -> af_register & 0xFF0F) | 0x0040;//unset all and set n flag;
+    //unset all and set n flag
+    unset_all_flags();
+    set_n_flag();
 
     //HC check
     // extract bit 3 from each
@@ -129,16 +161,16 @@ uint8_t cpu::sub_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr){
 
     //check hc
     if(target_lower4 < oprnd_lower4){
-        this -> af_register = this -> af_register | 0x0020;//set HC
+        set_hc_flag();//set HC
     }
 
     if(target_rgstr < oprnd_rgstr){
-         this -> af_register = this -> af_register | 0x0010;//set C
+         set_c_flag();//set C
     }
 
     //check zero
     if(val == 0x00){
-        this -> af_register = this -> af_register | 0x0080;//set Z;
+        set_z_flag();//set Z;
     }
 
     return val;
@@ -146,7 +178,10 @@ uint8_t cpu::sub_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr){
 
 uint8_t cpu::sbc_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr){
     uint8_t carry_flag = static_cast<uint8_t>(this -> af_register & 0x0010);//extract carry flag
-    this -> af_register = (this -> af_register & 0xFF0F) | 0x0040;//unset all and set n flag;
+    // this -> af_register = (this -> af_register & 0xFF0F) | 0x0040;;
+    //unset all and set n flag
+    unset_all_flags();
+    set_n_flag();
 
     uint8_t temp_oprnd_rgstr = oprnd_rgstr;
 
@@ -160,11 +195,11 @@ uint8_t cpu::sbc_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr){
 
     //check hc
     if(target_lower4 < oprnd_lower4){
-        this -> af_register = this -> af_register | 0x0020;//set HC
+        set_hc_flag();//set HC
     }
 
     if(target_rgstr < temp_oprnd_rgstr){
-         this -> af_register = this -> af_register | 0x0010;//set C
+         set_c_flag();//set C
     }
 
 
@@ -172,19 +207,45 @@ uint8_t cpu::sbc_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr){
 
     //check zero
     if(val == 0x00){
-        this -> af_register = this -> af_register | 0x0080;//set Z;
+        set_z_flag();//set Z;
     }
 
     return val;
 }
 
 uint8_t cpu::and_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr){
-    this -> af_register = (this -> af_register & 0xFF0F) | 0x0020;//unset all and set HC
+    // this -> af_register = (this -> af_register & 0xFF0F) | 0x0020;//unset all and set HC
+    unset_all_flags();
+    set_hc_flag();
 
     uint8_t val = target_rgstr & oprnd_rgstr;
 
     if(val == 0x00){
-        this -> af_register = this -> af_register | 0x0080;//set Z
+        set_z_flag();//set Z
+    }
+
+    return val;
+}
+
+
+uint8_t cpu::xor_8bit_rgstr(uint8_t target, uint8_t oprnd_rgstr){
+    unset_all_flags();
+
+    uint8_t val = target ^ oprnd_rgstr;
+
+    if(val == 0x00){
+        set_z_flag();//set Z
+    }
+    return val;
+}
+
+uint8_t cpu::or_8bit_rgstr(uint8_t target, uint8_t oprnd_rgstr){
+    unset_all_flags();
+
+    uint8_t val = target | oprnd_rgstr;
+
+    if(val == 0x00){
+        set_z_flag();
     }
 
     return val;
@@ -210,20 +271,20 @@ uint8_t cpu::adc_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr){
     uint8_t sum_4bit = (target_rgstr & 0x0F) + (oprnd_rgstr & 0x0F) + carry_flag;
 
     if(sum_4bit  > max_4bit_int){//if sum is greater than 15 a carry occurred
-        this -> af_register = this -> af_register | 0x0020;//set hc
+        set_hc_flag();//set hc
     }
 
     //check for carry
     uint16_t sum_16bit = static_cast<uint16_t>(target_rgstr + oprnd_rgstr + carry_flag);
 
     if(sum_16bit > max_8bit_int){//if sum is greater than 255 a carry occurred
-        this -> af_register = this -> af_register | 0x0010;//set c
+        set_c_flag();//set c
     }
 
     uint8_t sum_8bit_rep = static_cast<uint8_t>(sum_16bit);//convert to 8 bit rep
 
     if(sum_8bit_rep == 0x00){//if 8bit rep is empty
-        this -> af_register = this -> af_register | 0x0080;//set zero
+        set_z_flag();//set zero
     }
 
     return sum_8bit_rep;
@@ -233,16 +294,16 @@ uint8_t cpu::adc_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr){
 uint8_t cpu::dec_8bit_rgstr(uint8_t rgstr){
     this -> af_register = (this -> af_register & 0xFF1F);//unset all flags except carry
 
-    this -> af_register = this -> af_register | 0x40;// set nflag 0x40;
+    set_n_flag();// set nflag 0x40;
 
     if(rgstr == 0x01){//if decremented will bear zero
-        this -> af_register = this -> af_register | 0x80;//set zero flag 0x80
+        set_z_flag();//set zero flag 0x80
     }
 
     uint8_t lower_4bits = rgstr & 0x0F;
 
     if(lower_4bits == 0x00){
-        this -> af_register = this -> af_register | 0x20;//set HC;
+        set_hc_flag();//set HC;
     }
 
     return --rgstr;
@@ -514,7 +575,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
 
             if(bit_0 == 0x01){//if a one was carried out
                 a_reg = a_reg | 0x80;//set bit 7;
-                this -> af_register = this -> af_register | 0x0010; //set carry
+                set_c_flag(); //set carry
             }
 
             //set a_reg back into af_register
@@ -539,7 +600,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
 
 
             if(bit_0 == 0x01){//if a one was carried out of bit zero its moved into the carry flag
-                this -> af_register = this -> af_register | 0x0010; //set carry
+                set_c_flag(); //set carry
             }else{
                 this -> af_register = this -> af_register & 0xFFEF;
             }
@@ -564,7 +625,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
             uint16_t c_flag = af_register & mask;
 
             if(c_flag == 0x0000){//if carry flag not set
-                this -> af_register = this -> af_register | 0x0010;//set carry
+                set_c_flag();//set carry
             }else{
                 this -> af_register = this -> af_register & 0xFFEF;//unset carry
             }
@@ -578,7 +639,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
         }
 
         case 0x37:{//SCF set carry flag
-            this -> af_register = this -> af_register | 0x0010;
+            set_c_flag();
             return 4;
         }
 
@@ -768,32 +829,32 @@ int cpu::execute(uint8_t instruction, memory &memory){
             }
 
             case 0x0A:{
-                uint16_t data;
+                uint8_t data;
 
                 switch(upper_instr_byte){
                     case 0x00:{
-                        data = static_cast<uint16_t>(memory.read(this -> bc_register)) << 8;
+                        data = memory.read(this -> bc_register);
                         break;
                     }
 
                     case 0x10:{
-                        data = static_cast<uint16_t>(memory.read(this -> de_register)) << 8;
+                        data = memory.read(this -> de_register);
                         break;
                     }
 
                     case 0x20:{
-                        data = static_cast<uint16_t>(memory.read(this -> hl_register + 1)) << 8;
+                        data = memory.read(this -> hl_register + 1);
                         break;
                     }
 
                     case 0x30:{
-                        data = static_cast<uint16_t>(memory.read(this -> hl_register - 1)) << 8;
+                        data = memory.read(this -> hl_register - 1);
                         break;
                     }
 
                     // default://return err
                 }
-
+                set_a_reg(data);
                 this -> af_register = (this -> af_register & 0x00FF) | data;//clear a reg and replace with data
                 return 8;
             }
@@ -1207,7 +1268,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
             case 0x00:{// ADD AB
                 uint8_t sum = add_8bit_rgstr(get_a_reg(), get_b_reg());
 
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+                set_a_reg(sum);
 
                 return 4;
             }
@@ -1215,7 +1276,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
             case 0x01:{//ADD AC
                 uint8_t sum = add_8bit_rgstr(get_a_reg(), get_c_reg());
 
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+                set_a_reg(sum);
 
                 return 4;
             }
@@ -1223,7 +1284,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
             case 0x02:{//ADD AD
                 uint8_t sum = add_8bit_rgstr(get_a_reg(), get_d_reg());
 
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+                set_a_reg(sum);
 
                 return 4;
             }
@@ -1231,7 +1292,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
             case 0x03:{//ADD AE
                 uint8_t sum = add_8bit_rgstr(get_a_reg(), get_e_reg());
 
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+                set_a_reg(sum);
 
                 return 4;
             }
@@ -1239,7 +1300,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
             case 0x04:{//ADD AH
                 uint8_t sum = add_8bit_rgstr(get_a_reg(), get_h_reg());
 
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+                set_a_reg(sum);
 
                 return 4;
             }
@@ -1247,7 +1308,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
             case 0x05:{//ADD AL
                 uint8_t sum = add_8bit_rgstr(get_a_reg(), get_l_reg());
 
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+                set_a_reg(sum);
 
                 return 4;
             }
@@ -1257,7 +1318,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
 
                 uint8_t sum = add_8bit_rgstr(get_a_reg(), data);
 
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+                set_a_reg(sum);
 
                 return 8;
             }
@@ -1265,7 +1326,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
             case 0x07:{//ADD AA
                 uint8_t sum = add_8bit_rgstr(get_a_reg(), get_a_reg());
 
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+                set_a_reg(sum);
 
                 return 4;
             }
@@ -1278,7 +1339,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
             case 0x08:{//ADC AB
                 uint8_t sum = adc_8bit_rgstr(get_a_reg(), get_b_reg());
 
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+                set_a_reg(sum);
 
                 return 4;
             }
@@ -1286,7 +1347,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
             case 0x09:{//ADC AC
                 uint8_t sum = adc_8bit_rgstr(get_a_reg(), get_c_reg());
 
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+                set_a_reg(sum);
 
                 return 4;
             }
@@ -1294,7 +1355,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
             case 0x0A:{//ADC AD
                 uint8_t sum = adc_8bit_rgstr(get_a_reg(), get_d_reg());
 
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+                set_a_reg(sum);
 
                 return 4;
             }
@@ -1302,7 +1363,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
             case 0x0B:{//ADC AE
                 uint8_t sum = adc_8bit_rgstr(get_a_reg(), get_e_reg());
 
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+                set_a_reg(sum);
 
                 return 4;
             }
@@ -1310,7 +1371,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
             case 0x0C:{//ADC AH
                 uint8_t sum = adc_8bit_rgstr(get_a_reg(), get_h_reg());
 
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+                set_a_reg(sum);
 
                 return 4;
             }
@@ -1318,7 +1379,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
             case 0x0D:{//ADC AL
                 uint8_t sum = adc_8bit_rgstr(get_a_reg(), get_l_reg());
 
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+                set_a_reg(sum);
 
                 return 4;
             }
@@ -1328,7 +1389,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
 
                 uint8_t sum = adc_8bit_rgstr(get_a_reg(), data);
 
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+                set_a_reg(sum);
 
                 return 8;
             }
@@ -1336,7 +1397,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
             case 0x0F:{//ADC AA
                 uint8_t sum = adc_8bit_rgstr(get_a_reg(), get_a_reg());
 
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sum) << 8);
+                set_a_reg(sum);
 
                 return 4;
             }
@@ -1350,7 +1411,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
             case 0x00:{//SUB AB
                 uint8_t sub = sub_8bit_rgstr(get_a_reg(), get_b_reg());
 
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sub) << 8);
+                set_a_reg(sub);
 
                 return 4;
             }
@@ -1358,7 +1419,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
             case 0x01:{//SUB AC
                 uint8_t sub = sub_8bit_rgstr(get_a_reg(), get_c_reg());
 
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sub) << 8);
+                set_a_reg(sub);
 
                 return 4;
             }
@@ -1366,7 +1427,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
             case 0x02:{//SUB AD
                 uint8_t sub = sub_8bit_rgstr(get_a_reg(), get_d_reg());
 
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sub) << 8);
+                set_a_reg(sub);
 
                 return 4;
             }
@@ -1374,7 +1435,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
             case 0x03:{//SUB AE
                 uint8_t sub = sub_8bit_rgstr(get_a_reg(), get_e_reg());
 
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sub) << 8);
+                set_a_reg(sub);
 
                 return 4;
             }
@@ -1382,7 +1443,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
             case 0x04:{//SUB AH
                 uint8_t sub = sub_8bit_rgstr(get_a_reg(), get_h_reg());
 
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sub) << 8);
+                set_a_reg(sub);
 
                 return 4;
             }
@@ -1390,7 +1451,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
             case 0x05:{//SUB AL
                 uint8_t sub = sub_8bit_rgstr(get_a_reg(), get_l_reg());
 
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sub) << 8);
+                set_a_reg(sub);
 
                 return 4;
             }
@@ -1400,7 +1461,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
 
                 uint8_t sub = sub_8bit_rgstr(get_a_reg(), data);
 
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sub) << 8);
+                set_a_reg(sub);
 
                 return 8;
             }
@@ -1408,7 +1469,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
             case 0x07:{//SUB AA
                 uint8_t sub = sub_8bit_rgstr(get_a_reg(), get_a_reg());
 
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sub) << 8);
+                set_a_reg(sub);
 
                 return 4;
             }
@@ -1423,7 +1484,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
                 case 0x08:{//SBC AB
                     uint8_t sbc = sbc_8bit_rgstr(get_a_reg(), get_b_reg());
 
-                    this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sbc) << 8);
+                    set_a_reg(sbc);
 
                     return 4;
                 }
@@ -1431,7 +1492,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
                 case 0x09:{//SBC AC
                     uint8_t sbc = sbc_8bit_rgstr(get_a_reg(), get_c_reg());
 
-                    this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sbc) << 8);
+                    set_a_reg(sbc);
 
                     return 4;
                 }
@@ -1439,7 +1500,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
                 case 0x0A:{//SBC AD
                     uint8_t sbc = sbc_8bit_rgstr(get_a_reg(), get_d_reg());
 
-                    this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sbc) << 8);
+                    set_a_reg(sbc);
 
                     return 4;
                 }
@@ -1447,7 +1508,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
                 case 0x0B:{//SBC AE
                     uint8_t sbc = sbc_8bit_rgstr(get_a_reg(), get_e_reg());
 
-                    this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sbc) << 8);
+                    set_a_reg(sbc);
 
                     return 4;
                 }
@@ -1455,7 +1516,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
                 case 0x0C:{//SBC AH
                     uint8_t sbc = sbc_8bit_rgstr(get_a_reg(), get_h_reg());
 
-                    this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sbc) << 8);
+                    set_a_reg(sbc);
 
                     return 4;
                 }
@@ -1463,7 +1524,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
                 case 0x0D:{//SBC AL
                     uint8_t sbc = sbc_8bit_rgstr(get_a_reg(), get_l_reg());
 
-                    this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sbc) << 8);
+                    set_a_reg(sbc);
 
                     return 4;
                 }
@@ -1473,7 +1534,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
 
                     uint8_t sbc = sbc_8bit_rgstr(get_a_reg(), data);
 
-                    this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sbc) << 8);
+                    set_a_reg(sbc);
 
                     return 8;
                 }
@@ -1481,7 +1542,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
                 case 0x0F:{//SBC AA
                     uint8_t sbc = sbc_8bit_rgstr(get_a_reg(), get_a_reg());
 
-                    this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(sbc) << 8);
+                    set_a_reg(sbc);
 
                     return 4;
                 }
@@ -1489,47 +1550,47 @@ int cpu::execute(uint8_t instruction, memory &memory){
             }
 
         //all AND
-        case 0xA0: case 0xA1: case 0xA2: case 0xA3: case 0xA4:
-        case 0xA5: case 0xA6: case 0xA7:
+        case 0xA0: case 0xA1: case 0xA2: case 0xA3:
+        case 0xA4: case 0xA5: case 0xA6: case 0xA7:
         switch (lower_instr_byte) {
             case 0x00:{//AND B
                 uint8_t and_res = and_8bit_rgstr(get_a_reg(), get_b_reg());
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(and_res) << 8);
+                set_a_reg(and_res);
 
                 return 4;
             }
 
             case 0x01:{//AND C
                 uint8_t and_res = and_8bit_rgstr(get_a_reg(), get_c_reg());
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(and_res) << 8);
+                set_a_reg(and_res);
 
                 return 4;
             }
 
             case 0x02:{//AND D
                 uint8_t and_res = and_8bit_rgstr(get_a_reg(), get_d_reg());
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(and_res) << 8);
+                set_a_reg(and_res);
 
                 return 4;
             }
 
             case 0x03:{//AND E
                 uint8_t and_res = and_8bit_rgstr(get_a_reg(), get_e_reg());
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(and_res) << 8);
+                set_a_reg(and_res);
 
                 return 4;
             }
 
             case 0x04:{//AND H
                 uint8_t and_res = and_8bit_rgstr(get_a_reg(), get_h_reg());
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(and_res) << 8);
+                set_a_reg(and_res);
 
                 return 4;
             }
 
             case 0x05:{//AND L
                 uint8_t and_res = and_8bit_rgstr(get_a_reg(), get_l_reg());
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(and_res) << 8);
+                set_a_reg(and_res);
 
                 return 4;
             }
@@ -1538,19 +1599,136 @@ int cpu::execute(uint8_t instruction, memory &memory){
                 uint8_t data = memory.read(this -> hl_register);
 
                 uint8_t and_res = and_8bit_rgstr(get_a_reg(), data);
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(and_res) << 8);
+                set_a_reg(and_res);
 
                 return 8;
             }
 
             case 0x07:{//AND A
                 uint8_t and_res = and_8bit_rgstr(get_a_reg(), get_a_reg());
-                this -> af_register = (this -> af_register & 0x00FF) | (static_cast<uint16_t>(and_res) << 8);
+                set_a_reg(and_res);
 
                 return 4;
             }
         }
 
+        //rework create function for set af_register
+        case 0xA8: case 0xA9: case 0xAA: case 0xAB:
+        case 0xAC: case 0xAD: case 0xAE: case 0xAF:
+        switch (lower_instr_byte) {
+            case 0x08:{//XOR A,B
+                uint8_t val = xor_8bit_rgstr(get_a_reg(), get_b_reg());
+                set_a_reg(val);
+
+                return 4;
+            }
+            case 0x09:{//XOR A,C
+                uint8_t val = xor_8bit_rgstr(get_a_reg(), get_c_reg());
+                set_a_reg(val);
+
+                return 4;
+            }
+            case 0x0A:{//XOR A,D
+                uint8_t val = xor_8bit_rgstr(get_a_reg(), get_d_reg());
+                set_a_reg(val);
+
+                return 4;
+            }
+            case 0x0B:{//XOR A,E
+                uint8_t val = xor_8bit_rgstr(get_a_reg(), get_e_reg());
+                set_a_reg(val);
+
+                return 4;
+            }
+            case 0x0C:{//XOR A,H
+                uint8_t val = xor_8bit_rgstr(get_a_reg(), get_h_reg());
+                set_a_reg(val);
+
+                return 4;
+            }
+            case 0x0D:{//XOR A,L
+                uint8_t val = xor_8bit_rgstr(get_a_reg(), get_l_reg());
+                set_a_reg(val);
+
+                return 4;
+            }
+            case 0x0E:{//XOR A,HL
+                uint8_t data = memory.read(this -> hl_register);
+
+                uint8_t val = xor_8bit_rgstr(get_a_reg(), data);
+                set_a_reg(val);
+
+                return 4;
+            }
+            case 0x0F:{//XOR A,A
+                uint8_t val = xor_8bit_rgstr(get_a_reg(), get_a_reg());
+                set_a_reg(val);
+
+                return 4;
+            }
+        }
+
+        case 0xB0: case 0xB1: case 0xB2: case 0xB3:
+        case 0xB4: case 0xB5: case 0xB6: case 0xB7:
+        switch (lower_instr_byte) {
+
+            case 0x00:{//OR AB
+                uint8_t val = or_8bit_rgstr(get_a_reg(), get_b_reg());
+                set_a_reg(val);
+
+                return 4;
+            }
+
+            case 0x01:{//OR AC
+                uint8_t val = or_8bit_rgstr(get_a_reg(), get_c_reg());
+                set_a_reg(val);
+
+                return 4;
+            }
+
+            case 0x02:{//OR AD
+                uint8_t val = or_8bit_rgstr(get_a_reg(), get_d_reg());
+                set_a_reg(val);
+
+                return 4;
+            }
+
+            case 0x03:{//OR AE
+                uint8_t val = or_8bit_rgstr(get_a_reg(), get_e_reg());
+                set_a_reg(val);
+
+                return 4;
+            }
+
+            case 0x04:{//OR AH
+                uint8_t val = or_8bit_rgstr(get_a_reg(), get_h_reg());
+                set_a_reg(val);
+
+                return 4;
+            }
+
+            case 0x05:{//OR AL
+                uint8_t val = or_8bit_rgstr(get_a_reg(), get_l_reg());
+                set_a_reg(val);
+
+                return 4;
+            }
+
+            case 0x06:{//OR A HL
+                uint8_t data = memory.read(this -> hl_register);
+                uint8_t val = or_8bit_rgstr(get_a_reg(), data);
+                set_a_reg(val);
+
+                return 4;
+            }
+
+            case 0x07:{//OR AA
+                uint8_t val = or_8bit_rgstr(get_a_reg(), get_a_reg());
+                set_a_reg(val);
+
+                return 4;
+            }
+        }
 
     }
     return 0;
@@ -1566,3 +1744,4 @@ void cpu::reset(){ // reset all registers edit registers may point to start of i
     this-> program_counter =
     this -> stack_pointer = 0x0000; //start of instruction
 }
+//------------------//

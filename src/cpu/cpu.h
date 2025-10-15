@@ -33,13 +33,17 @@ class cpu{
 
     uint8_t dec_8bit_rgstr(uint8_t rgstr);
 
-
+    //logic op methods
     void add_16bit_rgstr(uint16_t &target_rgstr, uint16_t &oprnd_rgstr);
     uint8_t add_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr);
     uint8_t sub_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr);
     uint8_t adc_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr);
     uint8_t sbc_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr);
     uint8_t and_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr);
+    uint8_t xor_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr);
+    uint8_t or_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr);
+    uint8_t cp_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr);//to do
+
 
     uint8_t get_a_reg();
     uint8_t get_b_reg();
@@ -48,4 +52,15 @@ class cpu{
     uint8_t get_e_reg();
     uint8_t get_h_reg();
     uint8_t get_l_reg();
+
+    //flag setters
+    void set_z_flag();
+    void set_n_flag();
+    void set_hc_flag();
+    void set_c_flag();
+
+    void set_a_reg(uint8_t val);
+
+    void unset_c_flag();
+    void unset_all_flags();
 };

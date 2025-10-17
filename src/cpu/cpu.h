@@ -42,7 +42,7 @@ class cpu{
     uint8_t and_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr);
     uint8_t xor_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr);
     uint8_t or_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr);
-    uint8_t cp_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr);//to do
+    void cp_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr);
 
 
     uint8_t get_a_reg();

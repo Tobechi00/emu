@@ -309,6 +309,33 @@ uint8_t cpu::dec_8bit_rgstr(uint8_t rgstr){
     return --rgstr;
 }
 
+void cpu::cp_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr){
+    //unset all and set n flag
+    unset_all_flags();
+    set_n_flag();
+
+    //HC check
+    // extract bit 3 from each
+    uint8_t target_lower4 = target_rgstr & 0x0F;
+    uint8_t oprnd_lower4 = oprnd_rgstr & 0x0F;
+
+    uint8_t val = target_rgstr - oprnd_rgstr;
+
+    //check hc
+    if(target_lower4 < oprnd_lower4){
+        set_hc_flag();//set HC
+    }
+
+    if(target_rgstr < oprnd_rgstr){
+         set_c_flag();//set C
+    }
+
+    //check zero
+    if(val == 0x00){
+        set_z_flag();//set Z;
+    }
+}
+
 
 
 int cpu::execute(uint8_t instruction, memory &memory){
@@ -1612,7 +1639,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
             }
         }
 
-        //rework create function for set af_register
+        //XOR registers
         case 0xA8: case 0xA9: case 0xAA: case 0xAB:
         case 0xAC: case 0xAD: case 0xAE: case 0xAF:
         switch (lower_instr_byte) {
@@ -1668,6 +1695,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
             }
         }
 
+        //OR instructions
         case 0xB0: case 0xB1: case 0xB2: case 0xB3:
         case 0xB4: case 0xB5: case 0xB6: case 0xB7:
         switch (lower_instr_byte) {
@@ -1729,6 +1757,45 @@ int cpu::execute(uint8_t instruction, memory &memory){
                 return 4;
             }
         }
+
+        //compare instructions
+        case 0xB8: case 0xB9: case 0xBA: case 0xBB:
+        case 0xBC: case 0xBD: case 0xBE: case 0xBF:
+        switch (lower_instr_byte) {
+            case 0x08:{//CP AB
+                cp_8bit_rgstr(get_a_reg(), get_b_reg());
+            }
+
+            case 0x09:{//CP AC
+                cp_8bit_rgstr(get_a_reg(), get_c_reg());
+            }
+
+            case 0x0A:{//CP AD
+                cp_8bit_rgstr(get_a_reg(), get_d_reg());
+            }
+
+            case 0x0B:{//CP AE
+                cp_8bit_rgstr(get_a_reg(), get_e_reg());
+            }
+
+            case 0x0C:{//CP AH
+                cp_8bit_rgstr(get_a_reg(), get_h_reg());
+            }
+
+            case 0x0D:{//CP AL
+                cp_8bit_rgstr(get_a_reg(), get_l_reg());
+            }
+
+            case 0x0E:{//CP AHL
+                uint8_t data = memory.read(this -> hl_register);
+                cp_8bit_rgstr(get_a_reg(), data);
+            }
+
+            case 0x0F:{//CP AA
+                cp_8bit_rgstr(get_a_reg(), get_a_reg());
+            }
+        }
+
 
     }
     return 0;

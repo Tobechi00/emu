@@ -47,6 +47,22 @@ uint8_t cpu::get_l_reg(){
     return static_cast<uint8_t>(this -> hl_register);
 }
 
+uint8_t cpu::get_z_flag(){
+    return static_cast<uint8_t>(this -> af_register & 0x0080);
+}
+
+uint8_t cpu::get_n_flag(){
+    return static_cast<uint8_t>(this-> af_register & 0x0040);
+}
+
+uint8_t cpu::get_hc_flag(){
+    return static_cast<uint8_t>(this->  af_register & 0x0020);
+}
+
+uint8_t cpu::get_c_flag(){
+    return static_cast<uint8_t>(this ->  af_register & 0x0010);
+}
+
 void cpu::set_z_flag(){
     this -> af_register = this ->   af_register | 0x0080;
 }
@@ -334,6 +350,37 @@ void cpu::cp_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr){
     if(val == 0x00){
         set_z_flag();//set Z;
     }
+}
+
+void cpu::ret_instr(memory &memory){//pcL <- (sp), pcH <- (sp + 1)
+    uint8_t init_data = memory.read(this -> stack_pointer);
+
+    this -> program_counter = (this -> program_counter & 0xFF00) | static_cast<uint16_t>(init_data);
+
+    uint8_t  nxt_data = memory.read(++this -> stack_pointer);
+
+    this -> program_counter = (this -> program_counter & 0x00FF) | (static_cast<uint16_t>(nxt_data) << 8);
+    ++this -> stack_pointer;
+}
+
+void cpu::jp_instr(memory &memory){
+    uint16_t a16 = 0x0000;
+
+    a16 = a16 | static_cast<uint16_t>(memory.read(++this -> program_counter));//lower 8
+    a16 = a16 | (static_cast<uint16_t>(memory.read(++this -> program_counter)) << 8);//upper 8
+
+    this -> program_counter = a16;
+}
+
+void cpu::rst_instr(memory &memory, uint8_t p_val){
+    //PC is pushed onto stack
+    uint8_t hi_byte = static_cast<uint8_t>((this -> program_counter & 0xFF00) >> 8);
+    uint8_t lo_byte = static_cast<uint8_t>(this -> program_counter & 0x00FF);
+
+    memory.write(++this -> stack_pointer, hi_byte);
+    memory.write(++this -> stack_pointer, lo_byte);
+
+    this -> program_counter = static_cast<uint16_t>(p_val);
 }
 
 
@@ -1685,7 +1732,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
                 uint8_t val = xor_8bit_rgstr(get_a_reg(), data);
                 set_a_reg(val);
 
-                return 4;
+                return 8;
             }
             case 0x0F:{//XOR A,A
                 uint8_t val = xor_8bit_rgstr(get_a_reg(), get_a_reg());
@@ -1747,7 +1794,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
                 uint8_t val = or_8bit_rgstr(get_a_reg(), data);
                 set_a_reg(val);
 
-                return 4;
+                return 8;
             }
 
             case 0x07:{//OR AA
@@ -1764,37 +1811,221 @@ int cpu::execute(uint8_t instruction, memory &memory){
         switch (lower_instr_byte) {
             case 0x08:{//CP AB
                 cp_8bit_rgstr(get_a_reg(), get_b_reg());
+                return 4;
             }
 
             case 0x09:{//CP AC
                 cp_8bit_rgstr(get_a_reg(), get_c_reg());
+                return 4;
             }
 
             case 0x0A:{//CP AD
                 cp_8bit_rgstr(get_a_reg(), get_d_reg());
+                return 4;
             }
 
             case 0x0B:{//CP AE
                 cp_8bit_rgstr(get_a_reg(), get_e_reg());
+                return 4;
             }
 
             case 0x0C:{//CP AH
                 cp_8bit_rgstr(get_a_reg(), get_h_reg());
+                return 4;
             }
 
             case 0x0D:{//CP AL
                 cp_8bit_rgstr(get_a_reg(), get_l_reg());
+                return 4;
             }
 
             case 0x0E:{//CP AHL
                 uint8_t data = memory.read(this -> hl_register);
                 cp_8bit_rgstr(get_a_reg(), data);
+                return 8;
             }
 
             case 0x0F:{//CP AA
                 cp_8bit_rgstr(get_a_reg(), get_a_reg());
+                return 4;
             }
         }
+
+        //ALL RET INSTRS
+        case 0xC0: case 0xD0:
+        case 0xC8: case 0xD8:
+        case 0xC9: case 0xD9:
+        switch (upper_instr_byte) {
+            case 0xC0:{
+                switch (lower_instr_byte) {//C pref
+                    case 0x00:{//RET NZ
+                        if (!get_z_flag()) {
+                            ret_instr(memory);
+                            return 20;
+                        }
+                        return 8;
+                    }
+
+                    case 0x08:{//RET Z
+                        if (get_z_flag()) {
+                            ret_instr(memory);
+                            return 20;
+                        }
+                        return 8;
+                    }
+
+                    case 0x09:{//RET
+                        ret_instr(memory);
+                        return 16;
+                    }
+                }
+            }
+
+            case 0xD0:{
+                switch (lower_instr_byte) {//D pref
+                    case 0x00:{//RET NC
+                        if(!get_c_flag()){
+                            ret_instr(memory);
+                            return 20;
+                        }
+                        return 8;
+                    }
+
+                    case 0x08:{//RET C
+                        if(get_c_flag()){
+                            ret_instr(memory);
+                            return 20;
+                        }
+                        return 8;
+                    }
+
+                    case 0x09:{//RETI ????????????????????
+                        ret_instr(memory);
+                        return 16;
+                    }
+                }
+            }
+        }
+
+        //ret JP
+        case 0xC2: case 0xD2:
+        case 0xC3: case 0xE9:
+        case 0xCA: case 0xDA:
+        switch (upper_instr_byte) {
+            case 0xC0:{
+                switch (lower_instr_byte) {
+                    case 0x02:{//JP NZ
+                        if(!get_z_flag()){
+                            jp_instr(memory);
+                            return 16;
+                        }
+                        return 12;
+                    }
+
+                    case 0x03:{//JP
+                        jp_instr(memory);
+                        return 16;
+                    }
+
+                    case 0x0A:{//JP Z
+                        if(get_z_flag()){
+                            jp_instr(memory);
+                            return 16;
+                        }
+                        return 12;
+                    }
+                }
+            }
+
+            case 0xD0:{
+                case 0x02:{//JP NC
+                    if(!get_c_flag()){
+                        jp_instr(memory);
+                        return 16;
+                    }
+                    return 12;
+                }
+
+                case 0x0A:{//JP C
+                    if(get_c_flag()){
+                        jp_instr(memory);
+                        return 16;
+                    }
+                    return 12;
+                }
+            }
+
+            case 0xE0:{
+                case 0x09:{//JP HL
+                    this -> program_counter = this -> hl_register;
+                    return 4;
+                }
+            }
+        }
+
+        //ALL RST instrs
+        case 0xC7: case 0xD7: case 0xE7: case 0xF7:
+        case 0xCF: case 0xDF: case 0xEF: case 0xFF:
+        switch (upper_instr_byte) {
+            case 0xC0:{
+                switch (lower_instr_byte) {
+                    case 0x07:{// RST 0
+                        rst_instr(memory, 0x00);
+                        return 16;
+                    }
+
+                    case 0x0F:{//RST 1
+                        rst_instr(memory, 0x08);
+                        return 16;
+                    }
+                }
+            }
+
+            case 0xD0:{
+                switch (lower_instr_byte) {
+                    case 0x07:{//RST 2
+                        rst_instr(memory, 0x10);
+                        return 16;
+                    }
+
+                    case 0x0F:{//RST 3
+                        rst_instr(memory, 0x18);
+                        return 16;
+                    }
+                }
+            }
+
+            case 0xE0:{
+                switch (lower_instr_byte) {
+                    case 0x07:{//RST 4
+                        rst_instr(memory, 0x20);
+                        return 16;
+                    }
+
+                    case 0x0F:{//RST 5
+                        rst_instr(memory, 0x28);
+                        return 16;
+                    }
+                }
+            }
+
+            case 0xF0:{
+                switch (lower_instr_byte) {
+                    case 0x07:{//RST 6
+                        rst_instr(memory, 0x30);
+                        return 16;
+                    }
+
+                    case 0x0F:{//RST 7
+                        rst_instr(memory, 0x38);
+                        return 16;
+                    }
+                }
+            }
+        }
+
+
+
 
 
     }

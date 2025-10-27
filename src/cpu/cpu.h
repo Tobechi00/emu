@@ -43,6 +43,9 @@ class cpu{
     uint8_t xor_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr);
     uint8_t or_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr);
     void cp_8bit_rgstr(uint8_t target_rgstr, uint8_t oprnd_rgstr);
+    void ret_instr(memory &memory);
+    void jp_instr(memory &memory);
+    void rst_instr(memory &memory, uint8_t p_val);
 
 
     uint8_t get_a_reg();
@@ -58,6 +61,11 @@ class cpu{
     void set_n_flag();
     void set_hc_flag();
     void set_c_flag();
+
+    uint8_t get_z_flag();
+    uint8_t get_n_flag();
+    uint8_t get_hc_flag();
+    uint8_t get_c_flag();
 
     void set_a_reg(uint8_t val);
 

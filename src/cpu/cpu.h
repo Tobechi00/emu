@@ -46,6 +46,7 @@ class cpu{
     void ret_instr(memory &memory);
     void jp_instr(memory &memory);
     void rst_instr(memory &memory, uint8_t p_val);
+    void call_instr(memory &memory);
 
 
     uint8_t get_a_reg();

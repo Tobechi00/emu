@@ -377,10 +377,24 @@ void cpu::rst_instr(memory &memory, uint8_t p_val){
     uint8_t hi_byte = static_cast<uint8_t>((this -> program_counter & 0xFF00) >> 8);
     uint8_t lo_byte = static_cast<uint8_t>(this -> program_counter & 0x00FF);
 
-    memory.write(++this -> stack_pointer, hi_byte);
-    memory.write(++this -> stack_pointer, lo_byte);
+    memory.write(--this -> stack_pointer, hi_byte);
+    memory.write(--this -> stack_pointer, lo_byte);
 
     this -> program_counter = static_cast<uint16_t>(p_val);
+}
+
+void::cpu::call_instr(memory &memory){
+    uint16_t a16 = 0x0000;
+    a16 = a16 | static_cast<uint16_t>(memory.read(++this -> program_counter));
+    a16 = a16 | (static_cast<uint16_t>(memory.read(++this -> program_counter)) << 8);
+
+    uint8_t hi_byte = static_cast<uint8_t>((this -> program_counter & 0xFF00) >> 8);
+    uint8_t lo_byte = static_cast<uint8_t>(this -> program_counter & 0x00FF);
+
+    memory.write(--this -> stack_pointer, hi_byte);
+    memory.write(--this -> stack_pointer, lo_byte);
+
+    this -> program_counter = a16;
 }
 
 
@@ -1907,7 +1921,7 @@ int cpu::execute(uint8_t instruction, memory &memory){
             }
         }
 
-        //ret JP
+        //JP
         case 0xC2: case 0xD2:
         case 0xC3: case 0xE9:
         case 0xCA: case 0xDA:
@@ -2023,6 +2037,66 @@ int cpu::execute(uint8_t instruction, memory &memory){
                 }
             }
         }
+
+        //CALL
+        case 0xC4: case 0xD4:
+        case 0xCC: case 0xDD: case 0xCD:
+        switch (upper_instr_byte) {
+            case 0xC0:{
+                switch (lower_instr_byte) {
+
+                    case 0x04:{//CALL NZ, u16
+                        if(!get_z_flag()){
+                            call_instr(memory);
+                            return 24;
+                        }
+
+                        return 12;
+                    }
+
+
+                    case 0x0C:{// CALL Z, a16
+                        if(get_z_flag()){
+                            call_instr(memory);
+                            return 24;
+                        }
+
+                        return 12;
+                    }
+
+                    case 0x0D:{// CALL C, a16
+                        if(get_c_flag()){
+                            call_instr(memory);
+                            return 24;
+                        }
+
+                        return 12;
+                    }
+                }
+            }
+
+            case 0xD0:{
+
+                switch (lower_instr_byte) {
+
+                    case 0x04:{//CALL NC U16
+                        if(!get_c_flag()){
+                            call_instr(memory);
+                            return 24;
+                        }
+                        return 12;
+                    }
+
+                    case 0x0D:{//CALL a16
+                        call_instr(memory);
+                        return 24;
+                    }
+
+                }
+            }
+        }
+
+
 
 
 

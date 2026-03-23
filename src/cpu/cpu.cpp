@@ -2227,6 +2227,48 @@ int cpu::execute(uint8_t instruction, memory &memory){
             }
         }
 
+        case 0xE0: case 0xF0: case 0xE2: case 0xF2:
+        switch(upper_instr_byte) {
+            case 0xE0:{
+
+                switch (lower_instr_byte) {
+
+                    case 0x00:{//0xE0
+                        //addr lies inbetween 0xFF00-0xFFFF
+                        uint16_t address = 0xFF00 + static_cast<uint16_t>(memory.read(++this -> program_counter));
+                        memory.write(address, get_a_reg());
+
+                        return 12;
+                    }
+
+                    case 0x02:{//0xE2
+                        uint16_t address = 0xFF00 + get_c_reg();
+                        memory.write(address, get_a_reg());
+
+                        return 8;
+                    }
+                }
+            }
+
+            case 0xF0:{
+                switch (lower_instr_byte) {
+                    case 0x00:{//0xF0
+                        uint16_t address = 0xFF00 + static_cast<uint16_t>(memory.read(++this -> program_counter));
+
+                        set_a_reg(memory.read(address));
+                        return 12;
+                    }
+
+                    case 0x02:{//0xF2
+                        uint16_t address = 0xFF00 + get_c_reg();
+                        set_a_reg(memory.read(address));
+
+                        return 8;
+                    }
+                }
+            }
+        }
+
 
 
 
